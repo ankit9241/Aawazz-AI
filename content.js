@@ -1,17 +1,43 @@
 // Content script for Aawazz extension
 // Creates floating Aawazz button and includes form field extraction
 
+// ========================================
+// INITIALIZE: Detect form language early
+// ========================================
+// This will be called after DOM is ready
+function initializeFormLanguageDetection() {
+  console.log("Initializing form language detection...");
+
+  // Detect and store form language globally
+  const formLang = detectFormLanguage();
+  console.log(`Form language initialized: ${formLang}`);
+
+  // Also update in window for access
+  window.formLanguageDetected = true;
+}
+
+// Call detection when DOM is ready
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initializeFormLanguageDetection,
+  );
+} else {
+  // DOM already loaded
+  initializeFormLanguageDetection();
+}
+
 // Form field extraction functions
 function safeGetTextContent(element) {
-  return element ? element.textContent.trim() : '';
+  return element ? element.textContent.trim() : "";
 }
 
 function safeGetAttribute(element, attribute) {
-  return element ? (element.getAttribute(attribute) || '').trim() : '';
+  return element ? (element.getAttribute(attribute) || "").trim() : "";
 }
 
 function generateFieldId(index) {
-  return 'aawazz-field-' + index;
+  return "aawazz-field-" + index;
 }
 
 function extractFieldLabel(element, index) {
@@ -25,55 +51,75 @@ function extractFieldLabel(element, index) {
   }
 
   // 2. Check placeholder
-  const placeholderText = safeGetAttribute(element, 'placeholder');
+  const placeholderText = safeGetAttribute(element, "placeholder");
   if (placeholderText) {
     return placeholderText;
   }
 
   // 3. Check aria-label
-  const ariaLabelText = safeGetAttribute(element, 'aria-label');
+  const ariaLabelText = safeGetAttribute(element, "aria-label");
   if (ariaLabelText) {
     return ariaLabelText;
   }
 
   // 4. Fallback to "Field X"
-  return 'Field ' + (index + 1);
+  return "Field " + (index + 1);
 }
 
 function getFieldType(element) {
   const tagName = element.tagName.toLowerCase();
-  
-  if (tagName === 'input') {
-    return element.type || 'text';
+
+  if (tagName === "input") {
+    return element.type || "text";
   }
-  
+
   return tagName;
 }
 
 function isFieldEmpty(element) {
-  const value = element.value || '';
-  return value.trim() === '';
+  const value = element.value || "";
+  return value.trim() === "";
+}
+
+function isFieldVisible(element) {
+  // Check if element or any parent is hidden
+  let current = element;
+  while (current) {
+    const style = window.getComputedStyle(current);
+    if (style.display === "none" || style.visibility === "hidden") {
+      return false;
+    }
+    current = current.parentElement;
+  }
+  return true;
 }
 
 function extractFields() {
   const fields = [];
-  
+
   // Use safe querySelector to find all relevant form elements
   // Exclude Aawazz UI elements to avoid picking up our own inputs
-  const selector = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([id*="Aawazz"]):not([id*="aawazz"]), textarea:not([id*="Aawazz"]):not([id*="aawazz"]), select:not([id*="Aawazz"]):not([id*="aawazz"])';
+  const selector =
+    'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([id*="Aawazz"]):not([id*="aawazz"]), textarea:not([id*="Aawazz"]):not([id*="aawazz"]), select:not([id*="Aawazz"]):not([id*="aawazz"])';
   const formElements = document.querySelectorAll(selector);
 
   // Process each form element
   formElements.forEach((element, index) => {
+    // Skip if field is not visible (handles hidden forms)
+    if (!isFieldVisible(element)) {
+      console.log("Skipping hidden field:", element);
+      return;
+    }
+
     // Skip if field is not empty
     if (!isFieldEmpty(element)) {
       return;
     }
-    
+
     // Skip if element is within Aawazz UI container
-    const aawazzContainer = document.getElementById('Aawazz-ui');
+    const aawazzContainer = document.getElementById("Aawazz-ui");
     if (aawazzContainer && aawazzContainer.contains(element)) {
-      console.log('Skipping Aawazz UI element:', element);
+      console.log("Skipping Aawazz UI element:", element);
       return;
     }
 
@@ -84,7 +130,7 @@ function extractFields() {
 
     // Determine field ID
     const fieldId = element.id || element.name || generateFieldId(index);
-    
+
     // Extract field type and label
     const fieldType = getFieldType(element);
     const fieldLabel = extractFieldLabel(element, index);
@@ -94,7 +140,7 @@ function extractFields() {
       id: fieldId,
       type: fieldType,
       label: fieldLabel,
-      element: element
+      element: element,
     };
 
     // Add to fields array
@@ -107,8 +153,8 @@ function extractFields() {
 // Speech synthesis function
 function speak(text) {
   return new Promise((resolve, reject) => {
-    if (!('speechSynthesis' in window)) {
-      reject(new Error('Speech synthesis not supported'));
+    if (!("speechSynthesis" in window)) {
+      reject(new Error("Speech synthesis not supported"));
       return;
     }
 
@@ -116,12 +162,12 @@ function speak(text) {
     speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-IN';
-    
+    utterance.lang = "en-IN";
+
     utterance.onend = () => {
       resolve();
     };
-    
+
     utterance.onerror = (event) => {
       reject(new Error(`Speech synthesis error: ${event.error}`));
     };
@@ -130,7 +176,7 @@ function speak(text) {
   });
 }
 
-// 🔧 FINAL CLEAN LISTEN FUNCTION (USE THIS EXACTLY)
+// 🔧 FINAL CLEAN LISTEN FUNCTION WITH ENHANCED TIMEOUT HANDLING
 function listen() {
   return new Promise((resolve, reject) => {
     const SpeechRecognition =
@@ -138,13 +184,13 @@ function listen() {
 
     recognition = new SpeechRecognition();
 
-    recognition.lang = selectedLanguage === 'hi-IN' ? "hi-IN" : "en-US";
+    recognition.lang = selectedLanguage === "hi-IN" ? "hi-IN" : "en-US";
     recognition.continuous = true; // Enable to capture full phrases
     recognition.interimResults = false; // Disable interim results for cleaner recognition
     recognition.maxAlternatives = 1; // Use single best result to avoid fragmentation
-    
-    // Set timeout for longer listening
-    recognition.maxDuration = 5000; // 5 seconds to capture full input
+
+    // Set timeout for longer listening - INCREASED from 5s to 8s
+    recognition.maxDuration = 8000; // 8 seconds to capture full input
 
     let resolved = false;
 
@@ -156,10 +202,10 @@ function listen() {
       if (result.isFinal) {
         const finalText = result[0].transcript.trim();
         console.log("Final recognized:", finalText);
-        
+
         // Clean up common speech recognition errors for names (English only)
         let bestText = finalText;
-        if (selectedLanguage === 'en-IN') {
+        if (selectedLanguage === "en-IN") {
           bestText = cleanNameRecognition(finalText);
         }
 
@@ -174,90 +220,977 @@ function listen() {
     recognition.onerror = (err) => {
       if (!resolved) {
         resolved = true;
-        reject(err.error);
+        // Include error type for retry logic
+        reject({
+          error: err.error,
+          type: "recognition_error",
+        });
       }
     };
 
     recognition.onend = () => {
       if (!resolved) {
-        reject("No speech detected");
+        reject({
+          error: "No speech detected",
+          type: "no_speech",
+        });
       }
     };
 
-    // Add timeout to stop recognition after 5 seconds
+    // Add timeout to stop recognition after 8 seconds - INCREASED from 5s to 8s
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
         recognition.stop();
-        reject(new Error('Speech recognition timeout'));
+        reject({
+          error: "Speech recognition timeout",
+          type: "timeout",
+        });
       }
-    }, 5000);
+    }, 8000);
 
     recognition.start();
   });
 }
 
-// Normalize transcript by removing noise and formatting
-function normalizeTranscript(transcript) {
-  if (!transcript) return '';
-  
-  return transcript
-    .trim()
-    .toLowerCase()
-    // Remove common filler words and noise
-    .replace(/\b(um|uh|ah|er|mm|like|you know|I mean|actually|basically)\b/gi, '')
-    // Remove extra spaces
-    .replace(/\s+/g, ' ')
-    // Remove leading articles for cleaner responses
-    .replace(/^(a|an|the)\s+/i, '')
+// Enhanced listen function with automatic retry on timeout
+async function listenWithRetry(retryCount = 0) {
+  const MAX_RETRIES = 1; // Retry once on timeout
+
+  try {
+    console.log(`Listening attempt ${retryCount + 1}...`);
+    const result = await listen();
+    console.log(`Successfully recognized: "${result}"`);
+    return result;
+  } catch (error) {
+    // Check if error is a timeout error
+    const isTimeout =
+      error.type === "timeout" ||
+      (typeof error === "object" && error.error === "timeout") ||
+      (typeof error === "string" && error.includes("timeout"));
+
+    // If timeout and we haven't exceeded max retries, retry once
+    if (isTimeout && retryCount < MAX_RETRIES) {
+      console.log(`Timeout occurred, retrying... (attempt ${retryCount + 2})`);
+      // Add small delay before retry
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return listenWithRetry(retryCount + 1);
+    }
+
+    // If non-timeout error or max retries reached, reject
+    throw error;
+  }
+}
+
+// Helper function to check if a field is a password field
+function isPasswordField(element) {
+  if (!element) return false;
+
+  const tagName = (element.tagName || "").toLowerCase();
+  const inputType = (element.type || "").toLowerCase();
+
+  // Direct type check
+  if (inputType === "password") {
+    return true;
+  }
+
+  // Check field label/name for password indicators
+  const label = (element.name || element.id || "").toLowerCase();
+  const passwordIndicators = [
+    "password",
+    "pass",
+    "pwd",
+    "passwd",
+    "secret",
+    "pin",
+  ];
+
+  return (
+    tagName === "input" &&
+    passwordIndicators.some((indicator) => label.includes(indicator))
+  );
+}
+
+// Helper function to clean password input - removes all spaces
+function cleanPasswordInput(value) {
+  if (!value) return "";
+
+  // Remove ALL spaces from password (passwords don't have spaces)
+  return value.replace(/\s+/g, "");
+}
+
+// Helper function to identify field type
+function getFieldTypeFromElement(element) {
+  if (!element) return "text";
+
+  const tagName = (element.tagName || "").toLowerCase();
+
+  if (tagName === "input") {
+    return element.type || "text";
+  }
+
+  return tagName;
+}
+
+// Helper function to check if a field is an email field
+function isEmailField(element) {
+  if (!element) return false;
+
+  const inputType = (element.type || "").toLowerCase();
+  if (inputType === "email") return true;
+
+  const label = (element.name || element.id || "").toLowerCase();
+  return label.includes("email") || label.includes("mail");
+}
+
+// Helper function to check if a field is a phone field
+function isPhoneField(element) {
+  if (!element) return false;
+
+  const inputType = (element.type || "").toLowerCase();
+  if (inputType === "tel" || inputType === "phone") return true;
+
+  const label = (element.name || element.id || "").toLowerCase();
+  const phoneIndicators = ["phone", "mobile", "contact", "telephone"];
+
+  return phoneIndicators.some((indicator) => label.includes(indicator));
+}
+
+// Helper function to check if a field is a username field
+function isUsernameField(element) {
+  if (!element) return false;
+
+  const label = (element.name || element.id || "").toLowerCase();
+  const usernameIndicators = [
+    "username",
+    "user name",
+    "user_name",
+    "userid",
+    "user_id",
+    "login",
+    "account",
+    "handle",
+    "@",
+  ];
+
+  return usernameIndicators.some((indicator) => label.includes(indicator));
+}
+
+// Helper function to clean username input - removes all spaces
+function cleanUsernameInput(value) {
+  if (!value) return "";
+
+  // Remove ALL spaces from username (usernames don't have spaces)
+  return value.replace(/\s+/g, "");
+}
+
+// ========================================
+// COMPREHENSIVE FIELD TYPE DETECTION
+// ========================================
+
+/**
+ * Detect field category based on element and label
+ * Returns one of: "password", "email", "phone", "normal"
+ *
+ * @param {Element} element - The form element to analyze
+ * @param {string} fieldLabel - The field label/name (optional, for better detection)
+ * @returns {string} - One of: "password", "email", "phone", "normal"
+ */
+function detectFieldType(element, fieldLabel = "") {
+  if (!element) return "normal";
+
+  // Priority 1: Check for password field
+  if (isPasswordField(element)) {
+    return "password";
+  }
+
+  // Priority 2: Check for email field (use label for better detection)
+  if (isEmailFieldEnhanced(element, fieldLabel)) {
+    return "email";
+  }
+
+  // Priority 3: Check for phone field
+  if (isPhoneField(element)) {
+    return "phone";
+  }
+
+  // Default: Normal field
+  return "normal";
+}
+
+/**
+ * Enhanced email field detection
+ * Checks both element attributes and provided field label
+ *
+ * @param {Element} element - The form element
+ * @param {string} fieldLabel - The field label for additional context
+ * @returns {boolean}
+ */
+function isEmailFieldEnhanced(element, fieldLabel = "") {
+  if (!element) return false;
+
+  const inputType = (element.type || "").toLowerCase();
+  if (inputType === "email") return true;
+
+  // Check element name/id
+  const elementLabel = (element.name || element.id || "").toLowerCase();
+  const combinedLabel = (elementLabel + " " + (fieldLabel || "")).toLowerCase();
+
+  return (
+    combinedLabel.includes("email") ||
+    combinedLabel.includes("mail") ||
+    combinedLabel.includes("e-mail")
+  );
+}
+
+/**
+ * Process password input: remove spaces and convert Hindi to English
+ * Do NOT use AI - handle directly on frontend
+ *
+ * @param {string} rawInput - Raw password input from speech
+ * @returns {string} - Cleaned password ready for form field
+ */
+function processPasswordInput(rawInput) {
+  if (!rawInput) return "";
+
+  console.log(`Password input processing: "${rawInput}"`);
+
+  // Step 1: Convert Hindi letters to English using transliteration
+  let converted = rawInput;
+  if (containsHindiCharacters(rawInput)) {
+    converted = basicHindiToEnglish(rawInput);
+    console.log(
+      `Step 1 - Hindi to English conversion: "${rawInput}" → "${converted}"`,
+    );
+  }
+
+  // Step 2: Remove ALL spaces (passwords don't have spaces)
+  const cleaned = converted.replace(/\s+/g, "");
+  console.log(`Step 2 - Remove spaces: "${converted}" → "${cleaned}"`);
+
+  // Step 3: Additional cleanup - remove common speech artifacts
+  let final = cleaned
+    .replace(/\s+/g, "") // Double-check no spaces
     .trim();
+
+  console.log(`Password final: "${final}"`);
+  return final;
+}
+
+/**
+ * Process email input: convert Hindi symbols, transliterate, remove spaces
+ * Ensures output is always valid English email format
+ * Do NOT use AI - handle directly on frontend
+ *
+ * CRITICAL ORDER:
+ * 1. Replace Hindi phrases FIRST (लंबे phrases)
+ * 2. Then replace Hindi single words
+ * 3. THEN transliterate remaining Hindi
+ * 4. THEN remove spaces
+ *
+ * @param {string} rawInput - Raw email input from speech
+ * @returns {string} - Cleaned email ready for form field (lowercase, no spaces)
+ *
+ * Examples:
+ * "अंकित एट द रेट gmail डॉट com" → "ankit@gmail.com"
+ * "राज एट जीमेल डॉट कॉम" → "raj@gmail.com"
+ * "name@email.com" → "name@email.com"
+ */
+function processEmailInput(rawInput) {
+  if (!rawInput) return "";
+
+  console.log(`Email input processing: "${rawInput}"`);
+
+  let processed = rawInput;
+
+  // Step 1: Replace MULTI-WORD Hindi phrases FIRST
+  // These must be replaced before single-word replacements to avoid partial matches
+  const hindiMultiWordPhrases = [
+    { phrase: "एट द रेट", replacement: "@", desc: "at the rate" },
+    { phrase: "एट्  द रेट", replacement: "@", desc: "at the rate (variant)" },
+    {
+      phrase: "एट  द रेट",
+      replacement: "@",
+      desc: "at the rate (extra space)",
+    },
+    { phrase: "at the rate", replacement: "@", desc: "English at the rate" },
+  ];
+
+  for (const { phrase, replacement, desc } of hindiMultiWordPhrases) {
+    // Use exact string matching (case-insensitive) without word boundaries
+    // This avoids issues with Devanagari script and \b
+    const regex = new RegExp(phrase.replace(/\s+/g, "\\s+"), "gi");
+    if (regex.test(processed)) {
+      processed = processed.replace(regex, replacement);
+      console.log(`  Multi-word replacement: "${desc}" → "${replacement}"`);
+    }
+  }
+
+  console.log(
+    `Step 1 - Multi-word phrases converted: "${rawInput}" → "${processed}"`,
+  );
+
+  // Step 2: Replace SINGLE-WORD Hindi symbols
+  const hindiSingleWordSymbols = [
+    // @ symbol variants
+    { word: "एट्", symbol: "@", desc: "at with nukta" },
+    { word: "एट", symbol: "@", desc: "at" },
+    { word: "at", symbol: "@", desc: "English at" },
+
+    // . symbol variants
+    { word: "ड़ॉट", symbol: ".", desc: "dot with heavy nukta" },
+    { word: "डॉट्", symbol: ".", desc: "dot with nukta" },
+    { word: "डॉट", symbol: ".", desc: "dot in Hindi" },
+    { word: "डट", symbol: ".", desc: "alternative dot" },
+    { word: "dot", symbol: ".", desc: "English dot" },
+
+    // Space (user might say "space" instead of symbol)
+    { word: "स्पेस", symbol: " ", desc: "space" },
+  ];
+
+  for (const { word, symbol, desc } of hindiSingleWordSymbols) {
+    // Check if word is ASCII or contains Devanagari characters
+    const isASCII = /^[a-z]+$/i.test(word);
+
+    let regex;
+    if (isASCII) {
+      // ASCII words: use word boundaries
+      regex = new RegExp(`\\b${word}\\b`, "gi");
+      processed = processed.replace(regex, symbol);
+    } else {
+      // Devanagari words: use space or line boundaries (no \b for Devanagari)
+      regex = new RegExp(`(^|\\s)${word}(\\s|$)`, "gi");
+      // Replace with group 1 + symbol + group 2 to preserve boundaries
+      processed = processed.replace(regex, `$1${symbol}$2`);
+    }
+
+    // Log if replacement happened
+    if (processed.includes(symbol)) {
+      console.log(
+        `  Single-word replacement: "${desc}" (${word}) → "${symbol}"`,
+      );
+    }
+  }
+
+  console.log(`Step 2 - Single-word symbols converted: "${processed}"`);
+
+  // Step 3: NOW transliterate any remaining Hindi letters to English
+  // This happens AFTER all symbol replacements
+  if (containsHindiCharacters(processed)) {
+    const transliterated = basicHindiToEnglish(processed);
+    console.log(
+      `Step 3 - Hindi letters transliterated: "${processed}" → "${transliterated}"`,
+    );
+    processed = transliterated;
+  }
+
+  // Step 4: Remove all spaces
+  // Now safe to remove spaces since symbols are already replaced
+  processed = processed.replace(/\s+/g, "");
+  console.log(`Step 4 - Spaces removed: "${processed}"`);
+
+  // Step 5: Normalize email format
+  // Remove duplicate symbols to ensure valid email
+  processed = processed.replace(/@+/g, "@"); // Only one @
+  processed = processed.replace(/\.+/g, "."); // Only one dot per location
+
+  // Step 6: Lowercase (email standard)
+  const final = processed.toLowerCase().trim();
+  console.log(`Email final: "${final}"`);
+
+  return final;
+}
+
+/**
+ * Get canonical field type for processing decisions
+ * Maps various field types to standardized categories
+ *
+ * @param {string} htmlFieldType - HTML input type (text, email, password, tel, etc.)
+ * @returns {string} - Canonical type: "password", "email", "phone", "date", "number", "text"
+ */
+function getCanonicalFieldType(htmlFieldType) {
+  if (!htmlFieldType) return "text";
+
+  const normalized = htmlFieldType.toLowerCase().trim();
+
+  // Map various input types to categories
+  const typeMap = {
+    password: "password",
+    email: "email",
+    tel: "phone",
+    phone: "phone",
+    date: "date",
+    datetime: "date",
+    "datetime-local": "date",
+    number: "number",
+    url: "url",
+    search: "text",
+    text: "text",
+  };
+
+  return typeMap[normalized] || "text";
+}
+
+/**
+ * Check if a field should skip AI processing
+ * Returns true for structured/sensitive fields
+ *
+ * @param {Element} element - Form element
+ * @param {string} fieldLabel - Field label for context
+ * @returns {boolean}
+ */
+function shouldSkipAIProcessing(element, fieldLabel = "") {
+  const fieldType = detectFieldType(element, fieldLabel);
+
+  // Skip AI for password (always)
+  if (fieldType === "password") {
+    console.log(`Skipping AI: Password field`);
+    return true;
+  }
+
+  // Skip AI for email (use light normalization instead)
+  if (fieldType === "email") {
+    console.log(`Skipping AI: Email field (use light normalization)`);
+    return true;
+  }
+
+  // Don't skip for phone and normal fields
+  return false;
+}
+
+/**
+ * Enforce language on AI output for normal fields
+ * After AI processes a field, enforce the form language
+ *
+ * @param {string} aiOutput - The text returned from AI
+ * @param {string} formLanguage - The form language: "hi" or "en"
+ * @param {string} originalInput - The original user input (used as fallback if needed)
+ * @returns {string} - Text enforced to match form language, no mixed output
+ *
+ * Logic:
+ * - If formLanguage is "hi" (Hindi form):
+ *   - Convert English output to Hindi
+ *   - Remove any leftover English words (prevent mixed output)
+ *   - If mixed output detected with unmapped English, use original input
+ * - If formLanguage is "en" (English form):
+ *   - Convert Hindi output to English
+ */
+function enforceLanguageOnOutput(aiOutput, formLanguage, originalInput = "") {
+  if (!aiOutput) return "";
+
+  formLanguage = (formLanguage || "en").toLowerCase();
+
+  console.log(`\n=== ENFORCE LANGUAGE ===`);
+  console.log(`Input: "${aiOutput}"`);
+  console.log(`Target language: ${formLanguage}`);
+  console.log(`Original input (fallback): "${originalInput}"`);
+
+  let result = aiOutput;
+  const hasHindi = containsHindiCharacters(aiOutput);
+  const hasEnglish = /[a-z]/i.test(aiOutput); // Contains Latin characters
+
+  // Case 1: Form language is Hindi
+  if (formLanguage === "hi") {
+    console.log(
+      "Form language is Hindi - converting to Hindi, no mixed output",
+    );
+
+    // If output is pure Hindi, keep it
+    if (hasHindi && !hasEnglish) {
+      console.log("✅ Pure Hindi text, no conversion needed");
+      result = aiOutput;
+    }
+    // If output is pure English, convert it
+    else if (!hasHindi && hasEnglish) {
+      console.log("Pure English text, converting to Hindi");
+      result = convertToHindi(aiOutput);
+      console.log(`English → Hindi: "${aiOutput}" → "${result}"`);
+    }
+    // If output is MIXED (has both Hindi and English)
+    else if (hasHindi && hasEnglish) {
+      console.log("⚠️  Mixed output detected (Hindi + English)");
+      console.log(`Mixed text: "${aiOutput}"`);
+
+      // Try to convert to pure Hindi
+      result = convertToHindiWithFallback(aiOutput, originalInput);
+
+      // Check if result is still mixed
+      if (/[a-z]/i.test(result)) {
+        console.log(`⚠️  Still has English after conversion: "${result}"`);
+        console.log("Using original input as fallback");
+        result = originalInput || aiOutput;
+      }
+
+      console.log(`Result: "${result}"`);
+    }
+  }
+  // Case 2: Form language is English
+  else if (formLanguage === "en") {
+    console.log("Form language is English - ensuring pure English, no Hindi");
+
+    // If output is pure English, keep it
+    if (!hasHindi && hasEnglish) {
+      console.log("✅ Pure English text, no conversion needed");
+      result = aiOutput;
+    }
+    // If output is pure Hindi, convert it
+    else if (hasHindi && !hasEnglish) {
+      console.log("Pure Hindi text, converting to English");
+      result = basicHindiToEnglish(aiOutput);
+      console.log(`Hindi → English: "${aiOutput}" → "${result}"`);
+    }
+    // If output is MIXED (has both Hindi and English)
+    else if (hasHindi && hasEnglish) {
+      console.log("⚠️  Mixed output detected (Hindi + English)");
+
+      // Convert all Hindi to English
+      result = basicHindiToEnglish(aiOutput);
+      console.log(`Hindi → English: "${aiOutput}" → "${result}"`);
+    }
+  }
+
+  // Final check: Verify no mixed output for Hindi form
+  if (formLanguage === "hi" && /[a-z]/i.test(result)) {
+    console.log("❌ ERROR: Still has English characters after processing");
+    console.log(`Fallback to: "${originalInput}"`);
+    result = originalInput || aiOutput;
+  }
+
+  console.log(`Output: "${result}"`);
+  console.log(`=== END ENFORCE ===\n`);
+
+  return result;
+}
+
+/**
+ * Convert English text to Hindi using word mapping, with fallback for unmapped words
+ * Attempts to convert all English to Hindi
+ * If some words remain unmapped (broken English), returns the attempted conversion
+ *
+ * @param {string} text - Text with potential English words
+ * @param {string} fallbackText - Original input to return if conversion fails
+ * @returns {string} - Hindi text, or original if too many unmapped words
+ */
+function convertToHindiWithFallback(text, fallbackText = "") {
+  if (!text) return fallbackText;
+
+  // First pass: normal conversion
+  let result = convertToHindi(text);
+
+  // Count unmapped English words in result
+  const englishWords = result.match(/[a-z]+/gi) || [];
+  const hindiWords = (result.match(/[\u0900-\u097F]+/g) || []).length;
+
+  console.log(
+    `Conversion analysis: ${englishWords.length} English words, ${hindiWords} Hindi words`,
+  );
+
+  // If too many English words remain (>50% unmapped), use fallback
+  const totalWords = result.split(/\s+/).length;
+  const unmappedPercentage = englishWords.length / totalWords;
+
+  if (unmappedPercentage > 0.5 && fallbackText) {
+    console.log(
+      `⚠️  Too many unmapped words (${unmappedPercentage.toLocaleString("en-US", { style: "percent" })}), using fallback`,
+    );
+    return fallbackText;
+  }
+
+  return result;
+}
+
+/**
+ * Convert English text to Hindi using a mapping of common words
+ * This is a best-effort conversion for form field values
+ *
+ * @param {string} text - English text to convert
+ * @returns {string} - Hindi text or original if no mapping exists
+ */
+/**
+ * Convert English text to Hindi using word mapping
+ * Splits text into words, maps each word using Hindi dictionary, rejoins
+ * Unmapped words are preserved as-is (for names, numbers, etc.)
+ *
+ * @param {string} text - English text to convert
+ * @returns {string} - Hindi text (or mixed Hinglish for unmapped words)
+ *
+ * Examples:
+ * "ankit kumar" → "अंकित कुमार"
+ * "mumbai maharashtra" → "मुंबई महाराष्ट्र"
+ * "sector 5 road" → "सेक्टर 5 रोड"
+ */
+function convertToHindi(text) {
+  if (!text) return "";
+
+  // Comprehensive English to Hindi mapping for common form field values
+  const hindiMap = {
+    // Common words
+    yes: "हाँ",
+    no: "नहीं",
+    male: "पुरुष",
+    female: "महिला",
+    other: "अन्य",
+    select: "चुनें",
+    please: "कृपया",
+    thank: "धन्यवाद",
+    thanks: "धन्यवाद",
+    hello: "नमस्ते",
+    hi: "नमस्ते",
+    okay: "ठीक",
+    ok: "ठीक",
+
+    // Names (common examples)
+    ankit: "अंकित",
+    kumar: "कुमार",
+    rahul: "राहुल",
+    priya: "प्रिया",
+    amit: "अमित",
+    ravi: "रवि",
+    neha: "नेहा",
+    aman: "अमन",
+    vishal: "विशाल",
+    pooja: "पूजा",
+
+    // Cities
+    mumbai: "मुंबई",
+    delhi: "दिल्ली",
+    bangalore: "बेंगलुरु",
+    bengaluru: "बेंगलुरु",
+    chennai: "चेन्नई",
+    kolkata: "कोलकाता",
+    calcutta: "कोलकाता",
+    hyderabad: "हैदराबाद",
+    pune: "पुणे",
+    goa: "गोवा",
+
+    // States
+    maharashtra: "महाराष्ट्र",
+    karnataka: "कर्नाटक",
+    tamil: "तमिल",
+    punjab: "पंजाब",
+    kerala: "केरल",
+    rajasthan: "राजस्थान",
+    bihar: "बिहार",
+    haryana: "हरियाणा",
+    andhra: "आंध्र",
+    telangana: "तेलंगाना",
+    madhya: "मध्य",
+    pradesh: "प्रदेश",
+    uttar: "उत्तर",
+    uttarakhand: "उत्तराखंड",
+    assam: "असम",
+    himachal: "हिमाचल",
+
+    // Address related
+    road: "रोड",
+    street: "स्ट्रीट",
+    sector: "सेक्टर",
+    block: "ब्लॉक",
+    building: "बिल्डिंग",
+    apartment: "अपार्टमेंट",
+    apt: "अपार्टमेंट",
+    flat: "फ्लैट",
+    floor: "फ्लोर",
+    wing: "विंग",
+    nagar: "नगर",
+    colony: "कॉलोनी",
+    phase: "फेज",
+    plot: "प्लॉट",
+    shop: "शॉप",
+    office: "ऑफिस",
+
+    // Directions
+    east: "पूर्व",
+    west: "पश्चिम",
+    north: "उत्तर",
+    south: "दक्षिण",
+    left: "बाएं",
+    right: "दाएं",
+    center: "केंद्र",
+    middle: "बीच में",
+
+    // Common phrases
+    nothing: "कुछ नहीं",
+    something: "कुछ",
+    everything: "सब कुछ",
+    all: "सब",
+    none: "कोई नहीं",
+    same: "समान",
+    different: "अलग",
+    good: "अच्छा",
+    very: "बहुत",
+    bad: "बुरा",
+    new: "नया",
+    old: "पुराना",
+    big: "बड़ा",
+    small: "छोटा",
+  };
+
+  // Convert to lowercase and split by spaces
+  const words = text.toLowerCase().split(/\s+/);
+
+  // Map each word using the dictionary
+  const mappedWords = words.map((word) => {
+    // Skip empty strings
+    if (!word) return word;
+
+    // Try exact match first
+    if (hindiMap[word]) {
+      return hindiMap[word];
+    }
+
+    // Check if word is a number (preserve numbers)
+    if (/^\d+$/.test(word)) {
+      return word;
+    }
+
+    // If no mapping found, return original word
+    // This preserves names, numbers, and other unmapped values
+    console.log(`  ⚠️  Unmapped word: "${word}"`);
+    return word;
+  });
+
+  // Join back with spaces
+  const result = mappedWords.join(" ");
+
+  console.log(`convertToHindi: "${text}" → "${result}"`);
+
+  return result;
+}
+
+/**
+ * Enhanced version of convertToHindi that also handles partial word matches
+ * Useful for detecting Hindi words embedded in longer words
+ *
+ * @param {string} text - English text to convert
+ * @returns {string} - Hindi text with partial matches also converted
+ */
+function convertToHindiAdvanced(text) {
+  if (!text) return "";
+
+  // First do word-by-word conversion
+  let result = convertToHindi(text);
+
+  // Then handle common word patterns (optional enhancement)
+  // For example, handling "nagar" suffix in "vihar nagar" → "विहार नगर"
+  const suffixMap = {
+    nagar: "नगर",
+    road: "रोड",
+    street: "स्ट्रीट",
+  };
+
+  for (const [english, hindi] of Object.entries(suffixMap)) {
+    const regex = new RegExp(`\\b${english}\\b`, "gi");
+    result = result.replace(regex, hindi);
+  }
+
+  console.log(`convertToHindiAdvanced: "${text}" → "${result}"`);
+
+  return result;
+}
+
+// Keep old function for backward compatibility (maps to new function)
+function englishToHindiMapping(text) {
+  return convertToHindi(text);
+}
+
+/**
+ * Handle password field processing
+ * - Skip AI entirely
+ * - Remove all spaces
+ * - Transliterate any Hindi characters to English
+ *
+ * @param {string} input - Raw password input from speech
+ * @param {Element} element - Form element to fill
+ * @returns {Promise<string>} - Processed password ready to fill
+ */
+async function handlePassword(input, element) {
+  console.log("\n=== HANDLE PASSWORD FIELD ===");
+  console.log(`Raw input: "${input}"`);
+
+  // Step 1: Process password (remove spaces, transliterate Hindi)
+  const processed = processPasswordInput(input);
+  console.log(`Processed: "${processed}"`);
+
+  // Function returns the cleaned password
+  console.log("=== END PASSWORD ===\n");
+  return processed;
+}
+
+/**
+ * Handle email field processing
+ * - Skip full AI
+ * - Convert Hindi symbols to English (@, .)
+ * - Transliterate Hindi letters to English
+ * - Remove spaces
+ * - Ensure lowercase
+ *
+ * @param {string} input - Raw email input from speech
+ * @param {Element} element - Form element to fill
+ * @returns {Promise<string>} - Processed email ready to fill
+ */
+async function handleEmail(input, element) {
+  console.log("\n=== HANDLE EMAIL FIELD ===");
+  console.log(`Raw input: "${input}"`);
+
+  // Step 1: Process email (convert symbols, transliterate, remove spaces)
+  const processed = processEmailInput(input);
+  console.log(`Processed: "${processed}"`);
+
+  // Function returns the cleaned email
+  console.log("=== END EMAIL ===\n");
+  return processed;
+}
+
+/**
+ * Handle normal field processing
+ * - Use AI to clean input
+ * - Enforce form language on output
+ * - Support dropdowns with context
+ *
+ * @param {string} input - Raw input from speech
+ * @param {Object} field - Field object with label, element, options
+ * @param {string} formLanguage - Target form language (hi or en)
+ * @returns {Promise<string>} - Processed value ready to fill
+ */
+async function processNormalField(input, field, formLanguage) {
+  console.log("\n=== PROCESS NORMAL FIELD ===");
+  console.log(`Field: "${field.label}"`);
+  console.log(`Raw input: "${input}"`);
+
+  let cleanedValue;
+  const tagName = field.element.tagName.toLowerCase();
+
+  // Step 1: Process with AI (dropdown or regular)
+  if (tagName === "select") {
+    // Get dropdown options for AI context
+    const options = Array.from(field.element.options).map((opt) => ({
+      text: opt.text,
+      value: opt.value,
+    }));
+
+    console.log("Processing dropdown field");
+    console.log("Dropdown options:", options);
+
+    // Create context for AI
+    const fieldContext = {
+      type: "dropdown",
+      label: field.label,
+      options: options,
+      userLanguage: selectedLanguage,
+      formLanguage: formLanguage,
+    };
+
+    // AI processing with dropdown context
+    cleanedValue = await processWithAI(input, field.label, fieldContext);
+  } else {
+    // Regular field - use AI
+    console.log("Processing regular field");
+    cleanedValue = await processWithAI(input, field.label);
+  }
+
+  console.log(`After AI: "${cleanedValue}"`);
+
+  // Step 2: Enforce form language on AI output
+  // Pass original input as fallback if AI output is mixed language
+  cleanedValue = enforceLanguageOnOutput(cleanedValue, formLanguage, input);
+  console.log(`After language enforcement: "${cleanedValue}"`);
+
+  console.log("=== END NORMAL ===\n");
+  return cleanedValue;
+}
+
+/**
+ * Route field processing to appropriate handler based on field type
+ * Main dispatcher for field-specific processing
+ *
+ * @param {Object} field - Field object {label, element, type, etc}
+ * @param {string} input - Raw input from speech
+ * @param {string} formLanguage - Target form language (hi or en)
+ * @returns {Promise<string>} - Processed value ready to fill
+ */
+async function processFieldByType(field, input, formLanguage) {
+  console.log("\n╔════════════════════════════════════════╗");
+  console.log("║ PROCESS FIELD BY TYPE                  ║");
+  console.log("╚════════════════════════════════════════╝\n");
+
+  console.log(`Field label: "${field.label}"`);
+  console.log(`Raw input: "${input}"`);
+  console.log(`Form language: ${formLanguage}`);
+
+  // Detect field type
+  const fieldType = detectFieldType(field.element, field.label);
+  console.log(`Detected type: "${fieldType}"\n`);
+
+  let result;
+
+  // Route to appropriate handler
+  if (fieldType === "password") {
+    // Password: skip AI, just clean
+    console.log("→ Routing to handlePassword()");
+    result = await handlePassword(input, field.element);
+  } else if (fieldType === "email") {
+    // Email: skip AI, apply light normalization
+    console.log("→ Routing to handleEmail()");
+    result = await handleEmail(input, field.element);
+  } else {
+    // Normal: use AI then enforce language
+    console.log("→ Routing to processNormalField()");
+    result = await processNormalField(input, field, formLanguage);
+  }
+
+  console.log(`\nFinal result: "${result}"`);
+  console.log("╚════════════════════════════════════════╝\n");
+
+  return result;
 }
 
 // Check if response is unclear or too short
 function isUnclearResponse(response) {
   if (!response || response.length < 2) return true;
-  
+
   // Check for common unclear patterns
   const unclearPatterns = [
-    /^(yes|no|yeah|yep|nope)$/,  // Only yes/no without context
-    /^(okay|ok|alright)$/,       // Only agreement words
-    /^(hmm|uh|um)$/,             // Hesitation sounds
+    /^(yes|no|yeah|yep|nope)$/, // Only yes/no without context
+    /^(okay|ok|alright)$/, // Only agreement words
+    /^(hmm|uh|um)$/, // Hesitation sounds
     /^(I don't know|not sure|maybe)$/, // Uncertainty phrases
-    /^\d+$/,                     // Only numbers (unless context suggests it's expected)
-    /^[^\w\s]+$/                 // Only punctuation/symbols
+    /^\d+$/, // Only numbers (unless context suggests it's expected)
+    /^[^\w\s]+$/, // Only punctuation/symbols
   ];
-  
-  return unclearPatterns.some(pattern => pattern.test(response));
+
+  return unclearPatterns.some((pattern) => pattern.test(response));
 }
 
 // Enhanced listening with specific context
-function listenWithContext(context = '') {
+function listenWithContext(context = "") {
   return new Promise((resolve, reject) => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
     if (!SpeechRecognition) {
-      reject(new Error('Speech recognition not supported'));
+      reject(new Error("Speech recognition not supported"));
       return;
     }
 
     recognition = new SpeechRecognition();
-    
+
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = 'en-IN';
+    recognition.lang = "en-IN";
     recognition.maxAlternatives = 2; // Get more alternatives for better accuracy
-    
+
     // Set context hints if available
     if (context) {
       recognition.grammars = null; // Reset grammars
       // You could add custom grammars here for specific contexts
     }
-    
+
     recognition.onresult = (event) => {
       const results = event.results[0];
-      let bestTranscript = '';
+      let bestTranscript = "";
       let bestConfidence = 0;
-      
+
       // Find the best result among alternatives
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
@@ -266,28 +1199,30 @@ function listenWithContext(context = '') {
           bestTranscript = result.transcript;
         }
       }
-      
-      console.log(`Context: "${context}" - Result: "${bestTranscript}" (confidence: ${bestConfidence})`);
-      
+
+      console.log(
+        `Context: "${context}" - Result: "${bestTranscript}" (confidence: ${bestConfidence})`,
+      );
+
       const normalizedTranscript = normalizeTranscript(bestTranscript);
-      
+
       // If confidence is still low, try the other language
       if (bestConfidence < 0.6) {
-        console.log('Low confidence, trying alternative language...');
+        console.log("Low confidence, trying alternative language...");
         // Could implement fallback logic here
       }
-      
+
       resolve(normalizedTranscript);
     };
 
     recognition.onerror = (event) => {
-      console.error('Context recognition error:', event.error);
+      console.error("Context recognition error:", event.error);
       reject(new Error(`Speech recognition error: ${event.error}`));
     };
 
     recognition.onend = () => {
       if (!recognition.resultList || recognition.resultList.length === 0) {
-        reject(new Error('No speech detected'));
+        reject(new Error("No speech detected"));
       }
     };
 
@@ -301,246 +1236,246 @@ function listenWithContext(context = '') {
 // Create floating UI box for Aawazz status
 function createAawazzUI() {
   // Create main container
-  const uiContainer = document.createElement('div');
-  uiContainer.id = 'Aawazz-ui';
-  
+  const uiContainer = document.createElement("div");
+  uiContainer.id = "Aawazz-ui";
+
   // Style the container
-  uiContainer.style.position = 'fixed';
-  uiContainer.style.bottom = '80px';
-  uiContainer.style.right = '20px';
-  uiContainer.style.backgroundColor = '#1a1a1a';
-  uiContainer.style.color = '#ffffff';
-  uiContainer.style.padding = '16px';
-  uiContainer.style.borderRadius = '12px';
-  uiContainer.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.4)';
-  uiContainer.style.zIndex = '10001';
-  uiContainer.style.minWidth = '320px';
-  uiContainer.style.maxWidth = '400px';
-  uiContainer.style.fontFamily = 'Arial, sans-serif';
-  uiContainer.style.fontSize = '14px';
-  uiContainer.style.display = 'none';
-  uiContainer.style.transition = 'opacity 0.3s ease';
-  
+  uiContainer.style.position = "fixed";
+  uiContainer.style.bottom = "80px";
+  uiContainer.style.right = "20px";
+  uiContainer.style.backgroundColor = "#1a1a1a";
+  uiContainer.style.color = "#ffffff";
+  uiContainer.style.padding = "16px";
+  uiContainer.style.borderRadius = "12px";
+  uiContainer.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.4)";
+  uiContainer.style.zIndex = "10001";
+  uiContainer.style.minWidth = "320px";
+  uiContainer.style.maxWidth = "400px";
+  uiContainer.style.fontFamily = "Arial, sans-serif";
+  uiContainer.style.fontSize = "14px";
+  uiContainer.style.display = "none";
+  uiContainer.style.transition = "opacity 0.3s ease";
+
   // Create status section
-  const statusSection = document.createElement('div');
-  statusSection.id = 'Aawazz-status';
-  statusSection.style.marginBottom = '12px';
-  statusSection.style.fontWeight = '600';
-  statusSection.style.fontSize = '16px';
-  statusSection.style.color = '#4CAF50';
-  
+  const statusSection = document.createElement("div");
+  statusSection.id = "Aawazz-status";
+  statusSection.style.marginBottom = "12px";
+  statusSection.style.fontWeight = "600";
+  statusSection.style.fontSize = "16px";
+  statusSection.style.color = "#4CAF50";
+
   // Create question section
-  const questionSection = document.createElement('div');
-  questionSection.id = 'Aawazz-question';
-  questionSection.style.marginBottom = '12px';
-  questionSection.style.lineHeight = '1.4';
-  questionSection.style.color = '#e0e0e0';
-  
+  const questionSection = document.createElement("div");
+  questionSection.id = "Aawazz-question";
+  questionSection.style.marginBottom = "12px";
+  questionSection.style.lineHeight = "1.4";
+  questionSection.style.color = "#e0e0e0";
+
   // Create progress section
-  const progressSection = document.createElement('div');
-  progressSection.id = 'Aawazz-progress';
-  progressSection.style.fontSize = '12px';
-  progressSection.style.color = '#9e9e9e';
-  progressSection.style.fontStyle = 'italic';
-  progressSection.style.marginBottom = '12px';
-  
+  const progressSection = document.createElement("div");
+  progressSection.id = "Aawazz-progress";
+  progressSection.style.fontSize = "12px";
+  progressSection.style.color = "#9e9e9e";
+  progressSection.style.fontStyle = "italic";
+  progressSection.style.marginBottom = "12px";
+
   // Create input section (initially hidden)
-  const inputSection = document.createElement('div');
-  inputSection.id = 'Aawazz-input-section';
-  inputSection.style.display = 'none';
-  inputSection.style.marginBottom = '12px';
-  
+  const inputSection = document.createElement("div");
+  inputSection.id = "Aawazz-input-section";
+  inputSection.style.display = "none";
+  inputSection.style.marginBottom = "12px";
+
   // Create input label
-  const inputLabel = document.createElement('div');
-  inputLabel.textContent = 'Edit your response:';
-  inputLabel.style.fontSize = '12px';
-  inputLabel.style.color = '#9e9e9e';
-  inputLabel.style.marginBottom = '6px';
-  
+  const inputLabel = document.createElement("div");
+  inputLabel.textContent = "Edit your response:";
+  inputLabel.style.fontSize = "12px";
+  inputLabel.style.color = "#9e9e9e";
+  inputLabel.style.marginBottom = "6px";
+
   // Create input box
-  const inputBox = document.createElement('input');
-  inputBox.id = 'Aawazz-input';
-  inputBox.type = 'text';
-  inputBox.style.width = '100%';
-  inputBox.style.padding = '8px';
-  inputBox.style.backgroundColor = '#2a2a2a';
-  inputBox.style.color = '#ffffff';
-  inputBox.style.border = '1px solid #444';
-  inputBox.style.borderRadius = '6px';
-  inputBox.style.fontSize = '14px';
-  inputBox.style.marginBottom = '8px';
-  inputBox.style.boxSizing = 'border-box';
-  
+  const inputBox = document.createElement("input");
+  inputBox.id = "Aawazz-input";
+  inputBox.type = "text";
+  inputBox.style.width = "100%";
+  inputBox.style.padding = "8px";
+  inputBox.style.backgroundColor = "#2a2a2a";
+  inputBox.style.color = "#ffffff";
+  inputBox.style.border = "1px solid #444";
+  inputBox.style.borderRadius = "6px";
+  inputBox.style.fontSize = "14px";
+  inputBox.style.marginBottom = "8px";
+  inputBox.style.boxSizing = "border-box";
+
   // Create confirm button for input
-  const confirmButton = document.createElement('button');
-  confirmButton.id = 'Aawazz-confirm-button';
-  confirmButton.textContent = 'Confirm';
-  confirmButton.style.padding = '6px 12px';
-  confirmButton.style.backgroundColor = '#4CAF50';
-  confirmButton.style.color = 'white';
-  confirmButton.style.border = 'none';
-  confirmButton.style.borderRadius = '4px';
-  confirmButton.style.fontSize = '12px';
-  confirmButton.style.cursor = 'pointer';
-  confirmButton.style.marginRight = '8px';
-  
+  const confirmButton = document.createElement("button");
+  confirmButton.id = "Aawazz-confirm-button";
+  confirmButton.textContent = "Confirm";
+  confirmButton.style.padding = "6px 12px";
+  confirmButton.style.backgroundColor = "#4CAF50";
+  confirmButton.style.color = "white";
+  confirmButton.style.border = "none";
+  confirmButton.style.borderRadius = "4px";
+  confirmButton.style.fontSize = "12px";
+  confirmButton.style.cursor = "pointer";
+  confirmButton.style.marginRight = "8px";
+
   // Add hover effect to confirm button
-  confirmButton.addEventListener('mouseenter', () => {
-    confirmButton.style.backgroundColor = '#45a049';
+  confirmButton.addEventListener("mouseenter", () => {
+    confirmButton.style.backgroundColor = "#45a049";
   });
-  
-  confirmButton.addEventListener('mouseleave', () => {
-    confirmButton.style.backgroundColor = '#4CAF50';
+
+  confirmButton.addEventListener("mouseleave", () => {
+    confirmButton.style.backgroundColor = "#4CAF50";
   });
-  
+
   // Create cancel button for input
-  const cancelButton = document.createElement('button');
-  cancelButton.id = 'Aawazz-cancel-button';
-  cancelButton.textContent = 'Cancel';
-  cancelButton.style.padding = '6px 12px';
-  cancelButton.style.backgroundColor = '#666';
-  cancelButton.style.color = 'white';
-  cancelButton.style.border = 'none';
-  cancelButton.style.borderRadius = '4px';
-  cancelButton.style.fontSize = '12px';
-  cancelButton.style.cursor = 'pointer';
-  
+  const cancelButton = document.createElement("button");
+  cancelButton.id = "Aawazz-cancel-button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.style.padding = "6px 12px";
+  cancelButton.style.backgroundColor = "#666";
+  cancelButton.style.color = "white";
+  cancelButton.style.border = "none";
+  cancelButton.style.borderRadius = "4px";
+  cancelButton.style.fontSize = "12px";
+  cancelButton.style.cursor = "pointer";
+
   // Add hover effect to cancel button
-  cancelButton.addEventListener('mouseenter', () => {
-    cancelButton.style.backgroundColor = '#555';
+  cancelButton.addEventListener("mouseenter", () => {
+    cancelButton.style.backgroundColor = "#555";
   });
-  
-  cancelButton.addEventListener('mouseleave', () => {
-    cancelButton.style.backgroundColor = '#666';
+
+  cancelButton.addEventListener("mouseleave", () => {
+    cancelButton.style.backgroundColor = "#666";
   });
-  
+
   // Create button container
-  const buttonContainer = document.createElement('div');
-  buttonContainer.style.display = 'flex';
+  const buttonContainer = document.createElement("div");
+  buttonContainer.style.display = "flex";
   buttonContainer.appendChild(confirmButton);
   buttonContainer.appendChild(cancelButton);
-  
+
   // Assemble input section
   inputSection.appendChild(inputLabel);
   inputSection.appendChild(inputBox);
   inputSection.appendChild(buttonContainer);
-  
+
   // Create language selector
-  const languageSelector = document.createElement('div');
-  languageSelector.id = 'Aawazz-language-selector';
-  languageSelector.style.marginBottom = '12px';
-  
+  const languageSelector = document.createElement("div");
+  languageSelector.id = "Aawazz-language-selector";
+  languageSelector.style.marginBottom = "12px";
+
   // Create language label
-  const languageLabel = document.createElement('div');
-  languageLabel.textContent = 'Language:';
-  languageLabel.style.fontSize = '12px';
-  languageLabel.style.color = '#9e9e9e';
-  languageLabel.style.marginBottom = '6px';
-  
+  const languageLabel = document.createElement("div");
+  languageLabel.textContent = "Language:";
+  languageLabel.style.fontSize = "12px";
+  languageLabel.style.color = "#9e9e9e";
+  languageLabel.style.marginBottom = "6px";
+
   // Create language buttons container
-  const languageButtons = document.createElement('div');
-  languageButtons.style.display = 'flex';
-  languageButtons.style.gap = '8px';
-  
+  const languageButtons = document.createElement("div");
+  languageButtons.style.display = "flex";
+  languageButtons.style.gap = "8px";
+
   // English button
-  const englishButton = document.createElement('button');
-  englishButton.id = 'Aawazz-lang-en';
-  englishButton.textContent = 'English';
-  englishButton.style.padding = '4px 8px';
-  englishButton.style.backgroundColor = '#4CAF50';
-  englishButton.style.color = 'white';
-  englishButton.style.border = 'none';
-  englishButton.style.borderRadius = '4px';
-  englishButton.style.fontSize = '11px';
-  englishButton.style.cursor = 'pointer';
-  englishButton.style.flex = '1';
-  
+  const englishButton = document.createElement("button");
+  englishButton.id = "Aawazz-lang-en";
+  englishButton.textContent = "English";
+  englishButton.style.padding = "4px 8px";
+  englishButton.style.backgroundColor = "#4CAF50";
+  englishButton.style.color = "white";
+  englishButton.style.border = "none";
+  englishButton.style.borderRadius = "4px";
+  englishButton.style.fontSize = "11px";
+  englishButton.style.cursor = "pointer";
+  englishButton.style.flex = "1";
+
   // Hindi button
-  const hindiButton = document.createElement('button');
-  hindiButton.id = 'Aawazz-lang-hi';
-  hindiButton.textContent = 'Hindi';
-  hindiButton.style.padding = '4px 8px';
-  hindiButton.style.backgroundColor = '#666';
-  hindiButton.style.color = 'white';
-  hindiButton.style.border = 'none';
-  hindiButton.style.borderRadius = '4px';
-  hindiButton.style.fontSize = '11px';
-  hindiButton.style.cursor = 'pointer';
-  hindiButton.style.flex = '1';
-  
+  const hindiButton = document.createElement("button");
+  hindiButton.id = "Aawazz-lang-hi";
+  hindiButton.textContent = "Hindi";
+  hindiButton.style.padding = "4px 8px";
+  hindiButton.style.backgroundColor = "#666";
+  hindiButton.style.color = "white";
+  hindiButton.style.border = "none";
+  hindiButton.style.borderRadius = "4px";
+  hindiButton.style.fontSize = "11px";
+  hindiButton.style.cursor = "pointer";
+  hindiButton.style.flex = "1";
+
   // Add click events for language buttons
-  englishButton.addEventListener('click', () => {
-    switchLanguage('en-IN');
+  englishButton.addEventListener("click", () => {
+    switchLanguage("en-IN");
     updateLanguageButtons();
     // Show feedback
-    updateAawazzUI('Language Changed', 'Switched to English', '0 of 0');
+    updateAawazzUI("Language Changed", "Switched to English", "0 of 0");
   });
-  
-  hindiButton.addEventListener('click', () => {
-    switchLanguage('hi-IN');
+
+  hindiButton.addEventListener("click", () => {
+    switchLanguage("hi-IN");
     updateLanguageButtons();
     // Show feedback
-    updateAawazzUI('Language Changed', 'Switched to Hindi', '0 of 0');
+    updateAawazzUI("Language Changed", "Switched to Hindi", "0 of 0");
   });
-  
+
   // Add hover effects
-  [englishButton, hindiButton].forEach(button => {
-    button.addEventListener('mouseenter', () => {
-      if (button.style.backgroundColor !== '#4CAF50') {
-        button.style.backgroundColor = '#555';
+  [englishButton, hindiButton].forEach((button) => {
+    button.addEventListener("mouseenter", () => {
+      if (button.style.backgroundColor !== "#4CAF50") {
+        button.style.backgroundColor = "#555";
       }
     });
-    
-    button.addEventListener('mouseleave', () => {
-      if (button.style.backgroundColor !== '#4CAF50') {
-        button.style.backgroundColor = '#666';
+
+    button.addEventListener("mouseleave", () => {
+      if (button.style.backgroundColor !== "#4CAF50") {
+        button.style.backgroundColor = "#666";
       }
     });
   });
-  
+
   // Assemble language selector
   languageButtons.appendChild(englishButton);
   languageButtons.appendChild(hindiButton);
   languageSelector.appendChild(languageLabel);
   languageSelector.appendChild(languageButtons);
-  
+
   // Create options section (for dropdowns)
-  const optionsSection = document.createElement('div');
-  optionsSection.id = 'Aawazz-options';
-  optionsSection.style.display = 'none';
-  optionsSection.style.fontSize = '12px';
-  optionsSection.style.color = '#666';
-  optionsSection.style.marginTop = '10px';
-  
+  const optionsSection = document.createElement("div");
+  optionsSection.id = "Aawazz-options";
+  optionsSection.style.display = "none";
+  optionsSection.style.fontSize = "12px";
+  optionsSection.style.color = "#666";
+  optionsSection.style.marginTop = "10px";
+
   // Create stop button
-  const stopButton = document.createElement('button');
-  stopButton.id = 'Aawazz-stop-button';
-  stopButton.textContent = 'Stop';
-  stopButton.style.width = '100%';
-  stopButton.style.padding = '8px';
-  stopButton.style.backgroundColor = '#f44336';
-  stopButton.style.color = '#ffffff';
-  stopButton.style.border = 'none';
-  stopButton.style.borderRadius = '6px';
-  stopButton.style.cursor = 'pointer';
-  stopButton.style.fontSize = '14px';
-  stopButton.style.fontWeight = 'bold';
-  stopButton.style.transition = 'background-color 0.2s ease';
-  
+  const stopButton = document.createElement("button");
+  stopButton.id = "Aawazz-stop-button";
+  stopButton.textContent = "Stop";
+  stopButton.style.width = "100%";
+  stopButton.style.padding = "8px";
+  stopButton.style.backgroundColor = "#f44336";
+  stopButton.style.color = "#ffffff";
+  stopButton.style.border = "none";
+  stopButton.style.borderRadius = "6px";
+  stopButton.style.cursor = "pointer";
+  stopButton.style.fontSize = "14px";
+  stopButton.style.fontWeight = "bold";
+  stopButton.style.transition = "background-color 0.2s ease";
+
   // Add hover effect to stop button
-  stopButton.addEventListener('mouseenter', () => {
-    stopButton.style.backgroundColor = '#d32f2f';
+  stopButton.addEventListener("mouseenter", () => {
+    stopButton.style.backgroundColor = "#d32f2f";
   });
-  
-  stopButton.addEventListener('mouseleave', () => {
-    stopButton.style.backgroundColor = '#f44336';
+
+  stopButton.addEventListener("mouseleave", () => {
+    stopButton.style.backgroundColor = "#f44336";
   });
-  
+
   // Add click event to stop button
-  stopButton.addEventListener('click', () => {
+  stopButton.addEventListener("click", () => {
     stopAawazz();
   });
-  
+
   // Append sections to container
   uiContainer.appendChild(statusSection);
   uiContainer.appendChild(questionSection);
@@ -549,108 +1484,112 @@ function createAawazzUI() {
   uiContainer.appendChild(inputSection);
   uiContainer.appendChild(languageSelector);
   uiContainer.appendChild(stopButton);
-  
+
   // Append to body
   document.body.appendChild(uiContainer);
-  
+
   // Initialize language buttons
   updateLanguageButtons();
-  
+
   return uiContainer;
 }
 
 // Update language button states
 function updateLanguageButtons() {
-  const englishButton = document.getElementById('Aawazz-lang-en');
-  const hindiButton = document.getElementById('Aawazz-lang-hi');
-  
+  const englishButton = document.getElementById("Aawazz-lang-en");
+  const hindiButton = document.getElementById("Aawazz-lang-hi");
+
   if (englishButton && hindiButton) {
-    if (selectedLanguage === 'en-IN') {
-      englishButton.style.backgroundColor = '#4CAF50';
-      hindiButton.style.backgroundColor = '#666';
-    } else if (selectedLanguage === 'hi-IN') {
-      englishButton.style.backgroundColor = '#666';
-      hindiButton.style.backgroundColor = '#4CAF50';
+    if (selectedLanguage === "en-IN") {
+      englishButton.style.backgroundColor = "#4CAF50";
+      hindiButton.style.backgroundColor = "#666";
+    } else if (selectedLanguage === "hi-IN") {
+      englishButton.style.backgroundColor = "#666";
+      hindiButton.style.backgroundColor = "#4CAF50";
     }
   }
 }
 
 // Update UI elements with enhanced styling and animations
 function updateAawazzUI(status, question, progress, dropdownOptions = null) {
-  const uiContainer = document.getElementById('Aawazz-ui');
+  const uiContainer = document.getElementById("Aawazz-ui");
   if (!uiContainer) return;
-  
-  const statusElement = document.getElementById('Aawazz-status');
-  const questionElement = document.getElementById('Aawazz-question');
-  const progressElement = document.getElementById('Aawazz-progress');
-  const optionsElement = document.getElementById('Aawazz-options');
-  
+
+  const statusElement = document.getElementById("Aawazz-status");
+  const questionElement = document.getElementById("Aawazz-question");
+  const progressElement = document.getElementById("Aawazz-progress");
+  const optionsElement = document.getElementById("Aawazz-options");
+
   if (statusElement) {
     statusElement.textContent = status;
-    
+
     // Color-coded status with animations
-    if (status.toLowerCase().includes('listening')) {
-      statusElement.style.color = '#2196F3'; // Blue for listening
-      statusElement.style.animation = 'pulse 1.5s infinite';
-      statusElement.style.textShadow = '0 0 10px rgba(33, 150, 243, 0.5)';
-    } else if (status.toLowerCase().includes('speaking')) {
-      statusElement.style.color = '#4CAF50'; // Green for speaking
-      statusElement.style.animation = 'none';
-      statusElement.style.textShadow = '0 0 10px rgba(76, 175, 80, 0.5)';
-    } else if (status.toLowerCase().includes('error')) {
-      statusElement.style.color = '#f44336'; // Red for errors
-      statusElement.style.animation = 'shake 0.5s';
-      statusElement.style.textShadow = '0 0 10px rgba(244, 67, 54, 0.5)';
-    } else if (status.toLowerCase().includes('editing')) {
-      statusElement.style.color = '#FF9800'; // Orange for editing
-      statusElement.style.animation = 'none';
-      statusElement.style.textShadow = '0 0 10px rgba(255, 152, 0, 0.5)';
-    } else if (status.toLowerCase().includes('success')) {
-      statusElement.style.color = '#8BC34A'; // Light green for success
-      statusElement.style.animation = 'fadeIn 0.3s';
-      statusElement.style.textShadow = '0 0 10px rgba(139, 195, 74, 0.5)';
-    } else if (status.toLowerCase().includes('stopped')) {
-      statusElement.style.color = '#9E9E9E'; // Gray for stopped
-      statusElement.style.animation = 'fadeOut 0.3s';
-      statusElement.style.textShadow = '0 0 10px rgba(158, 158, 158, 0.5)';
+    if (status.toLowerCase().includes("listening")) {
+      statusElement.style.color = "#2196F3"; // Blue for listening
+      statusElement.style.animation = "pulse 1.5s infinite";
+      statusElement.style.textShadow = "0 0 10px rgba(33, 150, 243, 0.5)";
+    } else if (status.toLowerCase().includes("speaking")) {
+      statusElement.style.color = "#4CAF50"; // Green for speaking
+      statusElement.style.animation = "none";
+      statusElement.style.textShadow = "0 0 10px rgba(76, 175, 80, 0.5)";
+    } else if (status.toLowerCase().includes("error")) {
+      statusElement.style.color = "#f44336"; // Red for errors
+      statusElement.style.animation = "shake 0.5s";
+      statusElement.style.textShadow = "0 0 10px rgba(244, 67, 54, 0.5)";
+    } else if (status.toLowerCase().includes("editing")) {
+      statusElement.style.color = "#FF9800"; // Orange for editing
+      statusElement.style.animation = "none";
+      statusElement.style.textShadow = "0 0 10px rgba(255, 152, 0, 0.5)";
+    } else if (status.toLowerCase().includes("success")) {
+      statusElement.style.color = "#8BC34A"; // Light green for success
+      statusElement.style.animation = "fadeIn 0.3s";
+      statusElement.style.textShadow = "0 0 10px rgba(139, 195, 74, 0.5)";
+    } else if (status.toLowerCase().includes("stopped")) {
+      statusElement.style.color = "#9E9E9E"; // Gray for stopped
+      statusElement.style.animation = "fadeOut 0.3s";
+      statusElement.style.textShadow = "0 0 10px rgba(158, 158, 158, 0.5)";
     } else {
-      statusElement.style.color = '#FFC107'; // Amber for other states
-      statusElement.style.animation = 'none';
-      statusElement.style.textShadow = '0 0 10px rgba(255, 193, 7, 0.5)';
+      statusElement.style.color = "#FFC107"; // Amber for other states
+      statusElement.style.animation = "none";
+      statusElement.style.textShadow = "0 0 10px rgba(255, 193, 7, 0.5)";
     }
   }
-  
+
   if (questionElement) {
     questionElement.textContent = question;
     // Truncate long questions with ellipsis
     if (question.length > 80) {
-      questionElement.style.fontSize = '12px';
-      questionElement.style.lineHeight = '1.3';
+      questionElement.style.fontSize = "12px";
+      questionElement.style.lineHeight = "1.3";
     } else {
-      questionElement.style.fontSize = '14px';
-      questionElement.style.lineHeight = '1.4';
+      questionElement.style.fontSize = "14px";
+      questionElement.style.lineHeight = "1.4";
     }
   }
-  
+
   // Display dropdown options if available
   if (optionsElement && dropdownOptions && dropdownOptions.length > 0) {
-    optionsElement.style.display = 'block';
-    optionsElement.style.marginTop = '10px';
+    optionsElement.style.display = "block";
+    optionsElement.style.marginTop = "10px";
     optionsElement.innerHTML = `
       <div style="font-size: 12px; color: #666; margin-bottom: 5px;">
         <strong>Options:</strong>
       </div>
-      ${dropdownOptions.map((opt, index) => `
+      ${dropdownOptions
+        .map(
+          (opt, index) => `
         <div style="background: #f5f5f5; padding: 8px; margin: 3px 0; border-radius: 4px; cursor: pointer; transition: background 0.2s;">
           <div style="font-weight: bold; color: #333;">${index + 1}. ${opt.text || opt.value}</div>
         </div>
-      `).join('')}
+      `,
+        )
+        .join("")}
     `;
-    optionsElement.style.fontSize = '12px';
+    optionsElement.style.fontSize = "12px";
   } else if (optionsElement) {
-    optionsElement.style.display = 'none';
+    optionsElement.style.display = "none";
   }
-  
+
   if (progressElement) {
     progressElement.textContent = progress;
   }
@@ -659,43 +1598,43 @@ function updateAawazzUI(status, question, progress, dropdownOptions = null) {
 // Highlight active field on the page
 function highlightActiveField(field) {
   // Remove previous highlights
-  document.querySelectorAll('.aawazz-field-highlight').forEach(el => {
-    el.classList.remove('aawazz-field-highlight');
-    el.style.outline = '';
-    el.style.boxShadow = '';
+  document.querySelectorAll(".aawazz-field-highlight").forEach((el) => {
+    el.classList.remove("aawazz-field-highlight");
+    el.style.outline = "";
+    el.style.boxShadow = "";
   });
-  
+
   if (field && field.element) {
     // Add highlight to current field
-    field.element.classList.add('aawazz-field-highlight');
-    field.element.style.outline = '2px solid #2196F3';
-    field.element.style.outlineOffset = '-2px';
-    field.element.style.boxShadow = '0 0 15px rgba(33, 150, 243, 0.3)';
-    
+    field.element.classList.add("aawazz-field-highlight");
+    field.element.style.outline = "2px solid #2196F3";
+    field.element.style.outlineOffset = "-2px";
+    field.element.style.boxShadow = "0 0 15px rgba(33, 150, 243, 0.3)";
+
     // Scroll field into view
     field.element.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-      inline: 'nearest'
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
     });
   }
 }
 
 // Remove field highlights
 function removeFieldHighlights() {
-  document.querySelectorAll('.aawazz-field-highlight').forEach(el => {
-    el.classList.remove('aawazz-field-highlight');
-    el.style.outline = '';
-    el.style.boxShadow = '';
+  document.querySelectorAll(".aawazz-field-highlight").forEach((el) => {
+    el.classList.remove("aawazz-field-highlight");
+    el.style.outline = "";
+    el.style.boxShadow = "";
   });
 }
 
 // Add CSS animations to the page
 function addAawazzStyles() {
-  if (document.getElementById('aawazz-styles')) return;
-  
-  const style = document.createElement('style');
-  style.id = 'aawazz-styles';
+  if (document.getElementById("aawazz-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "aawazz-styles";
   style.textContent = `
     @keyframes pulse {
       0% { opacity: 1; }
@@ -736,39 +1675,39 @@ function addAawazzStyles() {
       animation: pulse 1.5s infinite;
     }
   `;
-  
+
   document.head.appendChild(style);
 }
 
 // Show/hide UI
 function showAawazzUI() {
-  const uiContainer = document.getElementById('Aawazz-ui');
+  const uiContainer = document.getElementById("Aawazz-ui");
   if (uiContainer) {
-    uiContainer.style.display = 'block';
-    uiContainer.style.opacity = '1';
+    uiContainer.style.display = "block";
+    uiContainer.style.opacity = "1";
   }
 }
 
 function hideAawazzUI() {
-  const uiContainer = document.getElementById('Aawazz-ui');
+  const uiContainer = document.getElementById("Aawazz-ui");
   if (uiContainer) {
-    uiContainer.style.opacity = '0';
+    uiContainer.style.opacity = "0";
     setTimeout(() => {
-      uiContainer.style.display = 'none';
+      uiContainer.style.display = "none";
     }, 300);
   }
 }
 
 // Show input section for editing
 function showInputSection(currentText) {
-  const inputSection = document.getElementById('Aawazz-input-section');
-  const inputBox = document.getElementById('Aawazz-input');
-  const confirmButton = document.getElementById('Aawazz-confirm-button');
-  const cancelButton = document.getElementById('Aawazz-cancel-button');
-  
+  const inputSection = document.getElementById("Aawazz-input-section");
+  const inputBox = document.getElementById("Aawazz-input");
+  const confirmButton = document.getElementById("Aawazz-confirm-button");
+  const cancelButton = document.getElementById("Aawazz-cancel-button");
+
   if (inputSection && inputBox && confirmButton && cancelButton) {
     inputBox.value = currentText;
-    inputSection.style.display = 'block';
+    inputSection.style.display = "block";
     inputBox.focus();
     inputBox.select();
   }
@@ -776,133 +1715,266 @@ function showInputSection(currentText) {
 
 // Hide input section
 function hideInputSection() {
-  const inputSection = document.getElementById('Aawazz-input-section');
+  const inputSection = document.getElementById("Aawazz-input-section");
   if (inputSection) {
-    inputSection.style.display = 'none';
+    inputSection.style.display = "none";
   }
 }
 
 // Get edited text from input
 function getEditedText() {
-  const inputBox = document.getElementById('Aawazz-input');
-  return inputBox ? inputBox.value.trim() : '';
+  const inputBox = document.getElementById("Aawazz-input");
+  return inputBox ? inputBox.value.trim() : "";
 }
 
 // Check if field should show input (name fields or low confidence)
 function shouldShowInput(field, response) {
   const fieldLabel = field.label.toLowerCase();
-  const isNameField = fieldLabel.includes('name') || fieldLabel.includes('first') || fieldLabel.includes('last') || fieldLabel.includes('full');
+  const isNameField =
+    fieldLabel.includes("name") ||
+    fieldLabel.includes("first") ||
+    fieldLabel.includes("last") ||
+    fieldLabel.includes("full");
   const isShortResponse = response.length < 3;
-  const hasNumbers = /\d/.test(response) && !fieldLabel.includes('phone') && !fieldLabel.includes('age');
-  
+  const hasNumbers =
+    /\d/.test(response) &&
+    !fieldLabel.includes("phone") &&
+    !fieldLabel.includes("age");
+
   return isNameField || isShortResponse || hasNumbers;
 }
 
 // Global variables
 let shouldStopAawazz = false;
-let selectedLanguage = 'en-IN'; // Default to Indian English
+let selectedLanguage = "en-IN"; // Default to Indian English
 let recognition = null; // Store recognition object globally
 
 // Language configuration
 const languages = {
-  'en-IN': {
-    name: 'English (India)',
-    code: 'en-IN',
-    speechCode: 'en-IN',
-    recognitionCode: 'en-IN',
-    fallbackCode: 'en-US',
-    greeting: 'Hello, I am Aawazz. I will help you fill forms using your voice.',
-    questionPrefix: 'What is your',
-    confirmPrompt: 'If this is correct say yes, otherwise say no clearly.',
-    retryMessage: 'Let\'s try again.',
-    successMessage: 'filled successfully.',
-    skipMessage: 'Skipping',
-    errorMessage: 'I didn\'t catch that. Let\'s try again.',
-    noSpeechMessage: 'I didn\'t hear anything. Please try again.',
-    unclearMessage: 'Please say yes or no clearly.',
-    stopMessage: 'Aawazz process stopped.',
-    completeMessage: 'All fields are filled.',
-    noFieldsMessage: 'No empty form fields found on this page.',
-    startMessage: 'Found {count} form fields to fill. Let\'s start.',
-    yesVariations: ['yes', 'yeah', 'yep', 'correct', 'right', 'that\'s it', 'that\'s right', 'okay', 'ok', 'sure', 'affirmative', 'definitely', 'absolutely', 'exactly', 'precisely', 'yup', 'y', 'mhm', 'uh-huh', 'sounds good', 'good', 'great', 'perfect', 'fine', 'alright', 'all right', 'confirmed', 'agree', 'agreed', 'accepted', 'approved', 'yes please', 'yes that\'s correct'],
-    noVariations: ['no', 'nope', 'wrong', 'incorrect', 'not right', 'that\'s wrong', 'that\'s not right', 'negative', 'n', 'nah', 'no way', 'absolutely not', 'definitely not', 'no thanks', 'no thank you', 'not correct', 'not exactly', 'disagree', 'disagreed', 'rejected', 'declined', 'denied', 'incorrect', 'bad', 'terrible', 'awful', 'horrible', 'not good', 'not acceptable', 'no that\'s wrong', 'try again', 'do over', 'start over', 'reset']
+  "en-IN": {
+    name: "English (India)",
+    code: "en-IN",
+    speechCode: "en-IN",
+    recognitionCode: "en-IN",
+    fallbackCode: "en-US",
+    greeting:
+      "Hello, I am Aawazz. I will help you fill forms using your voice.",
+    questionPrefix: "What is your",
+    confirmPrompt: "If this is correct say yes, otherwise say no clearly.",
+    retryMessage: "Let's try again.",
+    successMessage: "filled successfully.",
+    skipMessage: "Skipping",
+    errorMessage: "I didn't catch that. Let's try again.",
+    noSpeechMessage: "I didn't hear anything. Please try again.",
+    unclearMessage: "Please say yes or no clearly.",
+    stopMessage: "Aawazz process stopped.",
+    completeMessage: "All fields are filled.",
+    noFieldsMessage: "No empty form fields found on this page.",
+    startMessage: "Found {count} form fields to fill. Let's start.",
+    yesVariations: [
+      "yes",
+      "yeah",
+      "yep",
+      "correct",
+      "right",
+      "that's it",
+      "that's right",
+      "okay",
+      "ok",
+      "sure",
+      "affirmative",
+      "definitely",
+      "absolutely",
+      "exactly",
+      "precisely",
+      "yup",
+      "y",
+      "mhm",
+      "uh-huh",
+      "sounds good",
+      "good",
+      "great",
+      "perfect",
+      "fine",
+      "alright",
+      "all right",
+      "confirmed",
+      "agree",
+      "agreed",
+      "accepted",
+      "approved",
+      "yes please",
+      "yes that's correct",
+    ],
+    noVariations: [
+      "no",
+      "nope",
+      "wrong",
+      "incorrect",
+      "not right",
+      "that's wrong",
+      "that's not right",
+      "negative",
+      "n",
+      "nah",
+      "no way",
+      "absolutely not",
+      "definitely not",
+      "no thanks",
+      "no thank you",
+      "not correct",
+      "not exactly",
+      "disagree",
+      "disagreed",
+      "rejected",
+      "declined",
+      "denied",
+      "incorrect",
+      "bad",
+      "terrible",
+      "awful",
+      "horrible",
+      "not good",
+      "not acceptable",
+      "no that's wrong",
+      "try again",
+      "do over",
+      "start over",
+      "reset",
+    ],
   },
-  'hi-IN': {
-    name: 'Hindi (India)',
-    code: 'hi-IN',
-    speechCode: 'hi-IN',
-    recognitionCode: 'hi-IN',
-    fallbackCode: 'en-IN',
-    greeting: 'Hello, main Aawazz hoon. Main aapki awaaz se forms fill karne mein madad karunga.',
-    questionPrefix: 'Aapka',
-    confirmPrompt: 'Agar yeh sahi hai toh yes boliye, warna no clearly boliye.',
-    retryMessage: 'Phir se koshish karte hain.',
-    successMessage: 'successfully fill ho gaya.',
-    skipMessage: 'Skip kar raha hun',
-    errorMessage: 'Mujhe samajh nahi aaya. Phir se koshish karte hain.',
-    noSpeechMessage: 'Maine kuch nahi suna. Kripya phir se koshish karein.',
-    unclearMessage: 'Kripya yes ya no clearly boliye.',
-    stopMessage: 'Aawazz process stop ho gaya.',
-    completeMessage: 'Saare fields fill ho gaye hain.',
-    noFieldsMessage: 'Is page par koi empty form fields nahi mile.',
-    startMessage: '{count} form fields fill karne ke liye mile hain. Chaliye shuru karte hain.',
-    yesVariations: ['yes', 'haan', 'han', 'ji haan', 'sahi', 'thik hai', 'theek hai', 'correct', 'right', 'okay', 'ok', 'sure', 'bilkul', 'ha', 'ji', 'achcha', 'good', 'great', 'perfect', 'fine', 'alright', 'confirmed', 'agree', 'agreed', 'accepted', 'approved'],
-    noVariations: ['no', 'nahi', 'na', 'ji nahi', 'galat', 'wrong', 'incorrect', 'sahi nahi', 'negative', 'nahi thanks', 'disagree', 'disagreed', 'rejected', 'declined', 'denied', 'incorrect', 'bad', 'terrible', 'awful', 'horrible', 'not good', 'not acceptable', 'try again', 'phir se koshish karein']
-  }
+  "hi-IN": {
+    name: "Hindi (India)",
+    code: "hi-IN",
+    speechCode: "hi-IN",
+    recognitionCode: "hi-IN",
+    fallbackCode: "en-IN",
+    greeting:
+      "Hello, main Aawazz hoon. Main aapki awaaz se forms fill karne mein madad karunga.",
+    questionPrefix: "Aapka",
+    confirmPrompt: "Agar yeh sahi hai toh yes boliye, warna no clearly boliye.",
+    retryMessage: "Phir se koshish karte hain.",
+    successMessage: "successfully fill ho gaya.",
+    skipMessage: "Skip kar raha hun",
+    errorMessage: "Mujhe samajh nahi aaya. Phir se koshish karte hain.",
+    noSpeechMessage: "Maine kuch nahi suna. Kripya phir se koshish karein.",
+    unclearMessage: "Kripya yes ya no clearly boliye.",
+    stopMessage: "Aawazz process stop ho gaya.",
+    completeMessage: "Saare fields fill ho gaye hain.",
+    noFieldsMessage: "Is page par koi empty form fields nahi mile.",
+    startMessage:
+      "{count} form fields fill karne ke liye mile hain. Chaliye shuru karte hain.",
+    yesVariations: [
+      "yes",
+      "haan",
+      "han",
+      "ji haan",
+      "sahi",
+      "thik hai",
+      "theek hai",
+      "correct",
+      "right",
+      "okay",
+      "ok",
+      "sure",
+      "bilkul",
+      "ha",
+      "ji",
+      "achcha",
+      "good",
+      "great",
+      "perfect",
+      "fine",
+      "alright",
+      "confirmed",
+      "agree",
+      "agreed",
+      "accepted",
+      "approved",
+    ],
+    noVariations: [
+      "no",
+      "nahi",
+      "na",
+      "ji nahi",
+      "galat",
+      "wrong",
+      "incorrect",
+      "sahi nahi",
+      "negative",
+      "nahi thanks",
+      "disagree",
+      "disagreed",
+      "rejected",
+      "declined",
+      "denied",
+      "incorrect",
+      "bad",
+      "terrible",
+      "awful",
+      "horrible",
+      "not good",
+      "not acceptable",
+      "try again",
+      "phir se koshish karein",
+    ],
+  },
 };
 
 // Convert English field labels to natural Hindi questions
 function getHindiQuestion(label, options = null) {
   const labelLower = label.toLowerCase();
-  
+
   // Check if this is a dropdown field with options
   if (options && Array.isArray(options) && options.length > 0) {
     // Limit options to 3-5 for clarity
     const limitedOptions = options.slice(0, 5);
-    const optionsText = limitedOptions.map((opt, index) => `${index + 1}. ${opt.text || opt.value || opt}`).join(', ');
+    const optionsText = limitedOptions
+      .map((opt, index) => `${index + 1}. ${opt.text || opt.value || opt}`)
+      .join(", ");
     return `aapki ${label} kya hai? विकल्प हैं: ${optionsText}`;
   }
-  
+
   // Hindi question templates based on field type
   const hindiQuestions = {
-    'full name': 'aapka poora naam kya hai?',
-    'name': 'aapka naam kya hai?',
-    'first name': 'aapka pehla naam kya hai?',
-    'last name': 'aapka antim naam kya hai?',
-    'email': 'aapka email kya hai?',
-    'phone number': 'aapka mobile number kya hai?',
-    'phone': 'aapka mobile number kya hai?',
-    'telephone': 'aapka phone number kya hai?',
-    'mobile': 'aapka mobile number kya hai?',
-    'address': 'aapka pata kya hai?',
-    'city': 'aapka shehar kya hai?',
-    'state': 'aapka rajya kya hai?',
-    'country': 'aapka desh kya hai?',
-    'zip code': 'aapka pin code kya hai?',
-    'postal code': 'aapka pin code kya hai?',
-    'company': 'aapki company kya hai?',
-    'job title': 'aapka pad kya hai?',
-    'message': 'aapka sandesh kya hai?',
-    'comments': 'aapki tippaniyan kya hain?',
-    'age': 'aapki umra kya hai?',
-    'birthday': 'aapki janmdin tithi kya hai?',
-    'birth date': 'aapka janmdin tithi kya hai?',
-    'website': 'aapki website kya hai?',
-    'url': 'aapki website URL kya hai?'
+    "full name": "aapka poora naam kya hai?",
+    name: "aapka naam kya hai?",
+    "first name": "aapka pehla naam kya hai?",
+    "last name": "aapka antim naam kya hai?",
+    email: "aapka email kya hai?",
+    "phone number": "aapka mobile number kya hai?",
+    phone: "aapka mobile number kya hai?",
+    telephone: "aapka phone number kya hai?",
+    mobile: "aapka mobile number kya hai?",
+    address: "aapka pata kya hai?",
+    city: "aapka shehar kya hai?",
+    state: "aapka rajya kya hai?",
+    country: "aapka desh kya hai?",
+    "zip code": "aapka pin code kya hai?",
+    "postal code": "aapka pin code kya hai?",
+    company: "aapki company kya hai?",
+    "job title": "aapka pad kya hai?",
+    message: "aapka sandesh kya hai?",
+    comments: "aapki tippaniyan kya hain?",
+    age: "aapki umra kya hai?",
+    birthday: "aapki janmdin tithi kya hai?",
+    "birth date": "aapka janmdin tithi kya hai?",
+    website: "aapki website kya hai?",
+    url: "aapki website URL kya hai?",
   };
-  
+
   // Check for exact matches first
   if (hindiQuestions[labelLower]) {
     return hindiQuestions[labelLower];
   }
-  
+
   // Check for partial matches
   for (const [key, question] of Object.entries(hindiQuestions)) {
     if (labelLower.includes(key)) {
       return question;
     }
   }
-  
+
   // Default fallback
   return `aapka ${label} kya hai?`;
 }
@@ -912,37 +1984,39 @@ function matchUserInputToOption(userInput, options) {
   if (!options || !Array.isArray(options) || options.length === 0) {
     return null;
   }
-  
+
   const inputLower = userInput.toLowerCase().trim();
-  
+
   // Exact match first (case-insensitive)
   for (const option of options) {
-    const optionText = (option.text || option.value || '').toLowerCase().trim();
+    const optionText = (option.text || option.value || "").toLowerCase().trim();
     if (optionText === inputLower) {
       return option;
     }
   }
-  
+
   // Partial match (e.g., "11" → "Class 11")
   for (const option of options) {
-    const optionText = (option.text || option.value || '').toLowerCase().trim();
+    const optionText = (option.text || option.value || "").toLowerCase().trim();
     if (optionText.includes(inputLower) || inputLower.includes(optionText)) {
       return option;
     }
   }
-  
+
   // Number match (e.g., "11" → "Class 11")
-  const inputNumber = inputLower.replace(/[^0-9]/g, '');
+  const inputNumber = inputLower.replace(/[^0-9]/g, "");
   if (inputNumber) {
     for (const option of options) {
-      const optionText = (option.text || option.value || '').toLowerCase().trim();
-      const optionNumber = optionText.replace(/[^0-9]/g, '');
+      const optionText = (option.text || option.value || "")
+        .toLowerCase()
+        .trim();
+      const optionNumber = optionText.replace(/[^0-9]/g, "");
       if (optionNumber === inputNumber) {
         return option;
       }
     }
   }
-  
+
   // Fallback: return first option if no match found
   return options[0];
 }
@@ -957,85 +2031,145 @@ function containsHindiCharacters(text) {
 // Basic Hindi to English transliteration map
 function basicHindiToEnglish(text) {
   if (!text) return text;
-  
+
   const transliterationMap = {
-    'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo',
-    'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', '�': 'au',
-    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng',
-    'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny',
-    'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
-    'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
-    'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
-    'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
-    'ं': 'n', 'ः': 'h', 'ँ': 'an', 'ा': 'a', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo',
-    'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ॉ': 'o', 'ा': 'a',
-    'ृ': 'ri', 'ॄ': 'ree', 'ॢ': 'li', 'ॣ': 'lii'
+    अ: "a",
+    आ: "aa",
+    इ: "i",
+    ई: "ee",
+    उ: "u",
+    ऊ: "oo",
+    ए: "e",
+    ऐ: "ai",
+    ओ: "o",
+    "�": "au",
+    क: "k",
+    ख: "kh",
+    ग: "g",
+    घ: "gh",
+    ङ: "ng",
+    च: "ch",
+    छ: "chh",
+    ज: "j",
+    झ: "jh",
+    ञ: "ny",
+    ट: "t",
+    ठ: "th",
+    ड: "d",
+    ढ: "dh",
+    ण: "n",
+    त: "t",
+    थ: "th",
+    द: "d",
+    ध: "dh",
+    न: "n",
+    प: "p",
+    फ: "ph",
+    ब: "b",
+    भ: "bh",
+    म: "m",
+    य: "y",
+    र: "r",
+    ल: "l",
+    व: "v",
+    श: "sh",
+    ष: "sh",
+    स: "s",
+    ह: "h",
+    "ं": "n",
+    "ः": "h",
+    "ँ": "an",
+    "ा": "a",
+    "ि": "i",
+    "ी": "ee",
+    "ु": "u",
+    "ू": "oo",
+    "े": "e",
+    "ै": "ai",
+    "ो": "o",
+    "ौ": "au",
+    "ॉ": "o",
+    "ा": "a",
+    "ृ": "ri",
+    "ॄ": "ree",
+    "ॢ": "li",
+    "ॣ": "lii",
   };
-  
+
   // Simple character-by-character transliteration
-  let result = '';
+  let result = "";
   for (let char of text) {
     result += transliterationMap[char] || char;
   }
-  
+
   // Clean up common patterns
-  result = result.replace(/a+/g, 'a').replace(/i+/g, 'i').replace(/u+/g, 'u');
-  result = result.replace(/\s+/g, ' ').trim();
-  
+  result = result.replace(/a+/g, "a").replace(/i+/g, "i").replace(/u+/g, "u");
+  result = result.replace(/\s+/g, " ").trim();
+
   return result;
 }
 
 // Check if field is a name field for enhanced processing
 function isNameField(fieldLabel) {
   if (!fieldLabel) return false;
-  
+
   const labelLower = fieldLabel.toLowerCase();
   const nameKeywords = [
-    'name', 'full name', 'first name', 'last name', 'given name', 'family name',
-    'surname', 'firstname', 'lastname', 'middle name', 'nickname', 'display name'
+    "name",
+    "full name",
+    "first name",
+    "last name",
+    "given name",
+    "family name",
+    "surname",
+    "firstname",
+    "lastname",
+    "middle name",
+    "nickname",
+    "display name",
   ];
-  
-  return nameKeywords.some(keyword => labelLower.includes(keyword));
+
+  return nameKeywords.some((keyword) => labelLower.includes(keyword));
 }
 
 // Clean up common speech recognition errors for names (generic)
 function cleanNameRecognition(text) {
   if (!text) return text;
-  
+
   // Generic speech recognition fixes for any name
   let cleaned = text.trim();
-  
+
   // Fix common single-letter issues
   if (cleaned.length === 1 && !cleaned.match(/[a-zA-Z]/)) {
     // If it's just one non-letter character, return as-is for AI to handle
     return cleaned;
   }
-  
+
   // Fix common partial words
   if (cleaned.length <= 2) {
     // For very short recognitions, let AI handle it
     return cleaned;
   }
-  
+
   // Capitalize properly for names (first letter uppercase, rest lowercase)
   if (cleaned.length > 0) {
-    const words = cleaned.split(' ');
-    const capitalizedWords = words.map(word => {
+    const words = cleaned.split(" ");
+    const capitalizedWords = words.map((word) => {
       if (word.length > 0) {
         return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
       }
       return word;
     });
-    cleaned = capitalizedWords.join(' ');
+    cleaned = capitalizedWords.join(" ");
   }
-  
+
   console.log(`Name cleaned: "${text}" -> "${cleaned}"`);
   return cleaned;
 }
 
 // Get current language configuration
 function getCurrentLanguage() {
-  return languages[selectedLanguage] || languages['en-IN'];
+  return languages[selectedLanguage] || languages["en-IN"];
 }
 
 // Switch language function
@@ -1044,7 +2178,7 @@ function switchLanguage(languageCode) {
     selectedLanguage = languageCode;
     console.log(`Language switched to: ${languages[languageCode].name}`);
     // Store in localStorage for persistence
-    localStorage.setItem('aawazz-language', languageCode);
+    localStorage.setItem("aawazz-language", languageCode);
     return true;
   }
   return false;
@@ -1052,18 +2186,20 @@ function switchLanguage(languageCode) {
 
 // Load saved language preference
 function loadLanguagePreference() {
-  const saved = localStorage.getItem('aawazz-language');
+  const saved = localStorage.getItem("aawazz-language");
   if (saved && languages[saved]) {
     selectedLanguage = saved;
-    console.log(`Loaded language preference: ${languages[selectedLanguage].name}`);
+    console.log(
+      `Loaded language preference: ${languages[selectedLanguage].name}`,
+    );
   }
 }
 
 // Speech synthesis function with language support and proper cancellation
 function speak(text) {
   return new Promise((resolve, reject) => {
-    if (!('speechSynthesis' in window)) {
-      reject(new Error('Speech synthesis not supported'));
+    if (!("speechSynthesis" in window)) {
+      reject(new Error("Speech synthesis not supported"));
       return;
     }
 
@@ -1071,22 +2207,22 @@ function speak(text) {
     speechSynthesis.cancel();
 
     // Normalize text for better speech
-    const normalizedText = text.trim().replace(/\s+/g, ' ');
-    
+    const normalizedText = text.trim().replace(/\s+/g, " ");
+
     const utterance = new SpeechSynthesisUtterance(normalizedText);
     const lang = getCurrentLanguage();
     utterance.lang = lang.speechCode;
     utterance.rate = 0.9; // Slightly slower for clarity
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
-    
+
     let speechCompleted = false;
-    
+
     utterance.onend = () => {
       speechCompleted = true;
       resolve();
     };
-    
+
     utterance.onerror = (event) => {
       speechCompleted = true;
       reject(new Error(`Speech synthesis error: ${event.error}`));
@@ -1104,37 +2240,37 @@ function speak(text) {
 // Stop Aawazz function
 function stopAawazz() {
   shouldStopAawazz = true;
-  console.log('Aawazz stop requested');
-  
+  console.log("Aawazz stop requested");
+
   // Stop any ongoing speech immediately
-  if ('speechSynthesis' in window) {
+  if ("speechSynthesis" in window) {
     speechSynthesis.cancel();
-    console.log('Speech synthesis cancelled');
+    console.log("Speech synthesis cancelled");
   }
-  
+
   // Stop any ongoing speech recognition
   if (recognition) {
     try {
       recognition.stop();
-      console.log('Speech recognition stopped');
+      console.log("Speech recognition stopped");
     } catch (error) {
-      console.log('Speech recognition already stopped or not running');
+      console.log("Speech recognition already stopped or not running");
     }
   }
-  
+
   // Remove field highlights
   removeFieldHighlights();
-  
+
   // Show stopped message
   const lang = getCurrentLanguage();
   const stopMessage = lang.stopMessage;
-  updateAawazzUI('Stopped', stopMessage, '0 of 0');
-  
+  updateAawazzUI("Stopped", stopMessage, "0 of 0");
+
   // Speak the stopped message
-  speak(stopMessage).catch(error => {
-    console.log('Error speaking stop message:', error);
+  speak(stopMessage).catch((error) => {
+    console.log("Error speaking stop message:", error);
   });
-  
+
   // Hide UI after a short delay to let user see the stopped message
   setTimeout(() => {
     hideAawazzUI();
@@ -1145,225 +2281,236 @@ function stopAawazz() {
 async function startAawazz() {
   // Reset stop flag
   shouldStopAawazz = false;
-  
+
   // Load language preference
   loadLanguagePreference();
-  
+
   // Add styles to page
   addAawazzStyles();
-  
+
   // Create UI if it doesn't exist
-  if (!document.getElementById('Aawazz-ui')) {
+  if (!document.getElementById("Aawazz-ui")) {
     createAawazzUI();
   }
-  
+
   const lang = getCurrentLanguage();
-  
+
   try {
     // Extract form fields
     const fields = extractFields();
-    console.log('Extracted fields:', fields);
-    
+    console.log("Extracted fields:", fields);
+
     if (fields.length === 0) {
       showAawazzUI();
-      updateAawazzUI('Status', lang.noFieldsMessage, '0 of 0');
+      updateAawazzUI("Status", lang.noFieldsMessage, "0 of 0");
       await speak(lang.noFieldsMessage);
       hideAawazzUI();
       return;
     }
-    
+
     showAawazzUI();
-    
+
     // 1. INTRO MESSAGE: Greet user naturally
-    const greetingMessage = selectedLanguage === 'hi-IN' ? 
-      "नमस्ते, मैं आपकी फॉर्म भरने में मदद करूंगा।" : 
-      "Hi, I will help you fill this form.";
-    
-    updateAawazzUI('Starting', greetingMessage, '0 of ' + fields.length);
+    const greetingMessage =
+      selectedLanguage === "hi-IN"
+        ? "नमस्ते, मैं आपकी फॉर्म भरने में मदद करूंगा।"
+        : "Hi, I will help you fill this form.";
+
+    updateAawazzUI("Starting", greetingMessage, "0 of " + fields.length);
     await speak(greetingMessage);
-    
-    const startMessage = lang.startMessage.replace('{count}', fields.length);
-    updateAawazzUI('Ready', startMessage, '0 of ' + fields.length);
+
+    const startMessage = lang.startMessage.replace("{count}", fields.length);
+    updateAawazzUI("Ready", startMessage, "0 of " + fields.length);
     await speak(startMessage);
-    
+
     // Detect form language once at the beginning
     const formLanguage = detectFormLanguage();
-    console.log(`Form language: ${formLanguage}, User language: ${selectedLanguage}`);
-    
+    console.log(
+      `Form language: ${formLanguage}, User language: ${selectedLanguage}`,
+    );
+
     // Loop through fields sequentially with clean structure
     for (let i = 0; i < fields.length; i++) {
       // Check if stop was requested
       if (shouldStopAawazz) {
         removeFieldHighlights();
-        updateAawazzUI('Stopped', lang.stopMessage, `${i} of ${fields.length}`);
+        updateAawazzUI("Stopped", lang.stopMessage, `${i} of ${fields.length}`);
         await speak(lang.stopMessage);
         hideAawazzUI();
         return;
       }
-      
+
       const field = fields[i];
-      
+
       // Highlight current field
       highlightActiveField(field);
-      
+
       // 🧠 FINAL FLOW (CLEAN)
       // Ask with proper language handling
       const currentLang = getCurrentLanguage();
       let question;
-      
-      console.log(`Current language: ${currentLang.code} - ${currentLang.name}`);
+
+      console.log(
+        `Current language: ${currentLang.code} - ${currentLang.name}`,
+      );
       console.log(`Selected language variable: ${selectedLanguage}`);
       console.log(`Field label: ${field.label}`);
-      console.log(`Field options:`, field.options || 'none');
-      
-      if (currentLang.code === 'hi-IN') {
+      console.log(`Field options:`, field.options || "none");
+
+      if (currentLang.code === "hi-IN") {
         // Use natural Hindi question with options if available
-        console.log('Using Hindi question generation');
+        console.log("Using Hindi question generation");
         question = getHindiQuestion(field.label, field.options);
       } else {
         // Use English question with options if available
-        console.log('Using English question generation');
+        console.log("Using English question generation");
         question = generateSimpleQuestion(field.label, field.options);
       }
-      
+
       console.log(`Generated question: "${question}"`);
-      
+
       // Pass dropdown options to UI if available
       const dropdownOptions = field.options || null;
-      updateAawazzUI('Speaking', question, `${i + 1} of ${fields.length}`, dropdownOptions);
+      updateAawazzUI(
+        "Speaking",
+        question,
+        `${i + 1} of ${fields.length}`,
+        dropdownOptions,
+      );
       await speak(question);
-      
-      // Listen once
+
+      // Listen with automatic retry on timeout (increased timeout + 1 retry)
       let response;
       try {
-        response = await listen();
+        response = await listenWithRetry(); // Uses enhanced timeout (8s) + retries once on timeout
         console.log(`Raw response: "${response}"`);
       } catch (listenError) {
-        console.log('Listen failed:', listenError);
-        updateAawazzUI('Skipped', `Skipping ${field.label}`, `${i + 1} of ${fields.length}`);
+        const errorMsg =
+          typeof listenError === "object" ? listenError.error : listenError;
+        console.log("Listen failed after retry:", errorMsg);
+        updateAawazzUI(
+          "Skipped",
+          `Skipping ${field.label}`,
+          `${i + 1} of ${fields.length}`,
+        );
         await speak(`Skipping ${field.label}`);
         continue; // Move to next field
       }
-      
+
       // Enhanced name preprocessing for English
-      if (selectedLanguage === 'en-IN' && isNameField(field.label)) {
+      if (selectedLanguage === "en-IN" && isNameField(field.label)) {
         response = cleanNameRecognition(response);
         console.log(`Name preprocessed: "${response}"`);
       }
-      
+
       // Process with AI
-      updateAawazzUI('Processing', 'Just a moment...', `${i + 1} of ${fields.length}`);
+      updateAawazzUI(
+        "Processing",
+        "Just a moment...",
+        `${i + 1} of ${fields.length}`,
+      );
       let finalAnswer = await processWithAI(response, field.label);
       console.log(`AI cleaned: "${finalAnswer}"`);
-      
-      // 6. FILL: Handle dropdowns and Hindi to English conversion
-      if (finalAnswer) {
+
+      // 6. FILL: Route field processing based on field type
+      if (response) {
         try {
-          updateAawazzUI('Processing', 'Just a moment...', `${i + 1} of ${fields.length}`);
-          
-          console.log(`Original: "${finalAnswer}"`);
-          
-          // Check if this is a dropdown/select field
-          const tagName = field.element.tagName.toLowerCase();
-          let cleanedValue;
-          
-          if (tagName === 'select') {
-            // Get dropdown options for AI processing
-            const options = Array.from(field.element.options).map(opt => ({
-              text: opt.text,
-              value: opt.value
-            }));
-            
-            console.log('Dropdown options:', options);
-            
-            // Process with dropdown context
-            const fieldContext = {
-              type: 'dropdown',
-              label: field.label,
-              options: options,
-              userLanguage: selectedLanguage,
-              formLanguage: formLanguage
-            };
-            
-            // AI processing with dropdown context
-            cleanedValue = await processWithAI(finalAnswer, field.label, fieldContext);
-            console.log(`AI cleaned for dropdown: "${cleanedValue}"`);
-            
-          } else {
-            // Regular field processing
-            cleanedValue = await processWithAI(finalAnswer, field.label);
-            console.log(`AI cleaned: "${cleanedValue}"`);
-          }
-          
-          // FRONTEND SAFETY: Ensure English output for English forms
-          if (formLanguage === 'English' && containsHindiCharacters(cleanedValue)) {
-            const transliterated = basicHindiToEnglish(cleanedValue);
-            console.log(`FRONTEND: AI returned Hindi, applying transliteration: "${transliterated}"`);
-            cleanedValue = transliterated;
-          }
-          
-          // ALWAYS use AI processed value for filling
-          fillFormField(field.element, cleanedValue);
-          console.log(`Filled: "${cleanedValue}"`);
-          
-          // Simple success response
-          const successResponse = selectedLanguage === 'hi-IN' ? 'ठीक!' : 'Perfect!';
-          updateAawazzUI('Success', successResponse, `${i + 1} of ${fields.length}`);
-          await speak(successResponse);
-          
-        } catch (fillError) {
-          console.error('Fill error:', fillError);
-          
-          // FALLBACK: Use original only if AI completely fails
+          updateAawazzUI(
+            "Processing",
+            "Just a moment...",
+            `${i + 1} of ${fields.length}`,
+          );
+
+          // Route to appropriate handler based on field type
+          // - Password fields: skip AI, just remove spaces and transliterate
+          // - Email fields: skip AI, convert symbols and transliterate
+          // - Normal fields: use AI, then enforce language
+          const finalAnswer = await processFieldByType(
+            field,
+            response,
+            formLanguage,
+          );
+
+          console.log(`Final value to fill: "${finalAnswer}"`);
+
+          // Fill the field
           fillFormField(field.element, finalAnswer);
-          console.log(`AI failed, using original: "${finalAnswer}"`);
+          console.log(`Field filled: "${finalAnswer}"`);
+
+          // Simple success response
+          const successResponse =
+            selectedLanguage === "hi-IN" ? "ठीक!" : "Perfect!";
+          updateAawazzUI(
+            "Success",
+            successResponse,
+            `${i + 1} of ${fields.length}`,
+          );
+          await speak(successResponse);
+        } catch (fillError) {
+          console.error("Fill error:", fillError);
+
+          // FALLBACK: Use response if processing fails
+          fillFormField(field.element, response);
+          console.log(`Processing failed, using raw response: "${response}"`);
         }
-      }      
-            
+      }
+
       // Remove highlight and move to next field
       removeFieldHighlights();
-      
+
       // Small delay between fields for better UX
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    
+
     // Check if stop was requested before completion
     if (shouldStopAawazz) {
-      console.log('Aawazz stopped by user before completion');
+      console.log("Aawazz stopped by user before completion");
       removeFieldHighlights();
-      updateAawazzUI('Stopped', lang.stopMessage, `${fields.length} of ${fields.length}`);
+      updateAawazzUI(
+        "Stopped",
+        lang.stopMessage,
+        `${fields.length} of ${fields.length}`,
+      );
       await speak(lang.stopMessage);
       hideAawazzUI();
       return;
     }
-    
+
     // 9. END MESSAGE: Natural completion message
-    const endMessage = selectedLanguage === 'hi-IN' ? 
-      'सब हो गया है! कृपया अपना फॉर्म देखें और जरूरत के अनुसार बदलाव करें।' : 
-      'All done! Please review your form and make any changes you need.';
-    
-    updateAawazzUI('Complete', endMessage, `${fields.length} of ${fields.length}`);
+    const endMessage =
+      selectedLanguage === "hi-IN"
+        ? "सब हो गया है! कृपया अपना फॉर्म देखें और जरूरत के अनुसार बदलाव करें।"
+        : "All done! Please review your form and make any changes you need.";
+
+    updateAawazzUI(
+      "Complete",
+      endMessage,
+      `${fields.length} of ${fields.length}`,
+    );
     await speak(endMessage);
     hideAawazzUI();
-    
-    console.log('Aawazz completed successfully');
-    
+
+    console.log("Aawazz completed successfully");
+
     // Hide UI after completion
     setTimeout(() => {
       removeFieldHighlights();
       hideAawazzUI();
     }, 3000);
-    
   } catch (error) {
-    console.error('Aawazz critical error:', error);
+    console.error("Aawazz critical error:", error);
     removeFieldHighlights();
-    updateAawazzUI('Error', 'An error occurred while filling the form.', '0 of 0');
+    updateAawazzUI(
+      "Error",
+      "An error occurred while filling the form.",
+      "0 of 0",
+    );
     try {
-      await speak('An error occurred while filling the form.');
+      await speak("An error occurred while filling the form.");
     } catch (speakError) {
-      console.error('Error speaking error message:', speakError);
+      console.error("Error speaking error message:", speakError);
     }
-    
+
     // Hide UI after error
     setTimeout(() => {
       hideAawazzUI();
@@ -1377,163 +2524,193 @@ function generateSimpleQuestion(fieldLabel, options = null) {
   if (options && Array.isArray(options) && options.length > 0) {
     // Limit options to 3-5 for clarity
     const limitedOptions = options.slice(0, 5);
-    const optionsText = limitedOptions.map((opt, index) => `${index + 1}. ${opt.text || opt.value || opt}`).join(', ');
+    const optionsText = limitedOptions
+      .map((opt, index) => `${index + 1}. ${opt.text || opt.value || opt}`)
+      .join(", ");
     return `What is your ${fieldLabel}? Options: ${optionsText}`;
   }
-  
+
   const fieldLower = fieldLabel.toLowerCase();
-  
+
   // Simple question templates based on field type
   const questionTemplates = {
-    'name': 'What is your name?',
-    'full name': 'What is your full name?',
-    'first name': 'What is your first name?',
-    'last name': 'What is your last name?',
-    'email': 'What is your email address?',
-    'phone': 'What is your phone number?',
-    'telephone': 'What is your telephone number?',
-    'mobile': 'What is your mobile number?',
-    'address': 'What is your address?',
-    'city': 'What city do you live in?',
-    'state': 'What state do you live in?',
-    'country': 'What country do you live in?',
-    'zip': 'What is your zip code?',
-    'postal': 'What is your postal code?',
-    'age': 'How old are you?',
-    'birthday': 'What is your date of birth?',
-    'birth date': 'What is your birth date?',
-    'company': 'Where do you work?',
-    'job': 'What is your job title?',
-    'occupation': 'What is your occupation?',
-    'position': 'What is your position?',
-    'department': 'What department do you work in?',
-    'website': 'What is your website?',
-    'url': 'What is your website URL?',
-    'comment': 'What would you like to say?',
-    'message': 'What message would you like to leave?',
-    'notes': 'What notes would you like to add?',
-    'subject': 'What is the subject?',
-    'description': 'Please describe this briefly'
+    name: "What is your name?",
+    "full name": "What is your full name?",
+    "first name": "What is your first name?",
+    "last name": "What is your last name?",
+    email: "What is your email address?",
+    phone: "What is your phone number?",
+    telephone: "What is your telephone number?",
+    mobile: "What is your mobile number?",
+    address: "What is your address?",
+    city: "What city do you live in?",
+    state: "What state do you live in?",
+    country: "What country do you live in?",
+    zip: "What is your zip code?",
+    postal: "What is your postal code?",
+    age: "How old are you?",
+    birthday: "What is your date of birth?",
+    "birth date": "What is your birth date?",
+    company: "Where do you work?",
+    job: "What is your job title?",
+    occupation: "What is your occupation?",
+    position: "What is your position?",
+    department: "What department do you work in?",
+    website: "What is your website?",
+    url: "What is your website URL?",
+    comment: "What would you like to say?",
+    message: "What message would you like to leave?",
+    notes: "What notes would you like to add?",
+    subject: "What is the subject?",
+    description: "Please describe this briefly",
   };
-  
+
   // Find matching question or use default
   let question = questionTemplates[fieldLower] || `What is your ${fieldLabel}?`;
-  
+
   return question;
 }
 
 // Detect form language by analyzing page content
+// Detect form language by analyzing character distribution
+// Returns and stores globally as window.formLanguage
 function detectFormLanguage() {
-  // Check page language attribute
-  const pageLang = document.documentElement.lang || document.body.getAttribute('lang') || 'en';
-  
-  // Check for Hindi indicators in the page
-  const hindiIndicators = [
-    /[\u0900-\u097F]/, // Hindi Unicode range
-    /namaste|dhanyawad|shukriya/i,
-    /kya|hai|hain|ho|i/,
-    /mera|teri|uska|hamara/i,
-    /naam|pata|number|address/i
-  ];
-  
-  // Check text content for Hindi
-  const pageText = document.body.innerText.toLowerCase();
-  const hasHindiContent = hindiIndicators.some(pattern => pattern.test(pageText));
-  
-  // Check form labels and placeholders
-  const formElements = document.querySelectorAll('label, input[placeholder], textarea[placeholder]');
-  const formText = Array.from(formElements).map(el => 
-    (el.textContent || el.getAttribute('placeholder') || '').toLowerCase()
-  ).join(' ');
-  
-  const hasHindiForm = hindiIndicators.some(pattern => pattern.test(formText));
-  
-  // Determine form language
-  if (pageLang.startsWith('hi') || hasHindiContent || hasHindiForm) {
-    console.log('Form language detected: Hindi');
-    return 'hi';
-  } else {
-    console.log('Form language detected: English');
-    return 'en';
+  // Return cached value if already detected
+  if (window.formLanguage) {
+    console.log(`Form language (cached): ${window.formLanguage}`);
+    return window.formLanguage;
   }
-}
 
-// Detect if input contains English words
-function containsEnglishWords(text) {
-  if (!text) return false;
-  
-  // Check for common English patterns and academic subjects
-  const englishPatterns = [
-    // Common English words
-    /\b(the|and|or|but|in|on|at|to|for|of|with|by|from|up|out|about|over|under)\b/gi,
-    /\b(is|are|was|were|been|being|have|has|had|do|does|did|will|would|could|should|may|might|must|can)\b/gi,
-    
-    // Academic subjects (common in forms)
-    /\b(mathematics|physics|chemistry|biology|computer|science|engineering|medical|business|economics|statistics|algebra|geometry|history|geography|psychology|sociology|literature|philosophy)\b/gi,
-    
-    // Common greetings and responses
-    /\b(hello|hi|hey|good|morning|evening|night|thank|you|please|sorry|yes|no|okay|alright|sure|absolutely|definitely|probably|maybe|actually|basically)\b/gi,
-    
-    // Common descriptive words
-    /\b(important|necessary|required|optional|available|present|absent|complete|incomplete|correct|incorrect|valid|invalid|primary|secondary|higher|lower|upper|final|initial)\b/gi,
-    
-    // Technical and business terms
-    /\b(software|hardware|database|network|security|development|design|analysis|management|marketing|sales|finance|accounting|human|resources)\b/gi
+  // Check page language attribute
+  const pageLang =
+    document.documentElement.lang || document.body.getAttribute("lang") || "en";
+
+  // Collect all text from page and form elements
+  const pageText = document.body.innerText || "";
+
+  // Get form labels and placeholders
+  const formElements = document.querySelectorAll(
+    "label, input[placeholder], textarea[placeholder], input[aria-label], textarea[aria-label]",
+  );
+  const formText = Array.from(formElements)
+    .map(
+      (el) =>
+        el.textContent ||
+        el.getAttribute("placeholder") ||
+        el.getAttribute("aria-label") ||
+        "",
+    )
+    .join(" ");
+
+  // Combine all collected text
+  const allText = (pageText + " " + formText).toLowerCase();
+
+  // Count Hindi and Latin characters
+  const hindiCharRegex = /[\u0900-\u097F]/g; // Devanagari script (Hindi)
+  const latinCharRegex = /[a-z]/gi; // Latin alphabet
+
+  const hindiCharCount = (allText.match(hindiCharRegex) || []).length;
+  const latinCharCount = (allText.match(latinCharRegex) || []).length;
+
+  // Additional Hindi indicators
+  const hindiIndicators = [
+    /namaste|dhanyawad|shukriya|hindi/i,
+    /kya|hai|hain|ho/i, // Common Hindi words
+    /mera|teri|uska|hamara/i, // Possessive Hindi words
+    /naam|pata|phone|address|email|age|city/i, // English field names (but could have Hindi labels)
   ];
-  
-  return englishPatterns.some(pattern => pattern.test(text));
+
+  const hasHindiIndicators = hindiIndicators.some((pattern) =>
+    pattern.test(allText),
+  );
+
+  console.log(`\n=== LANGUAGE DETECTION ===`);
+  console.log(`Page lang attribute: ${pageLang}`);
+  console.log(`Hindi characters found: ${hindiCharCount}`);
+  console.log(`Latin characters found: ${latinCharCount}`);
+  console.log(`Hindi indicators found: ${hasHindiIndicators}`);
+
+  // Decision logic:
+  // 1. If page lang starts with "hi", use Hindi
+  // 2. Else if Hindi characters > Latin characters, use Hindi
+  // 3. Else if Hindi indicators present AND no significant Latin text, use Hindi
+  // 4. Otherwise use English
+
+  let detectedLanguage = "en";
+
+  if (pageLang.startsWith("hi")) {
+    detectedLanguage = "hi";
+    console.log("Decision: Page lang attribute is Hindi");
+  } else if (hindiCharCount > latinCharCount && hindiCharCount > 0) {
+    detectedLanguage = "hi";
+    console.log(
+      `Decision: Hindi characters (${hindiCharCount}) > Latin characters (${latinCharCount})`,
+    );
+  } else if (hasHindiIndicators && latinCharCount < 50) {
+    detectedLanguage = "hi";
+    console.log("Decision: Hindi indicators found with minimal Latin text");
+  } else {
+    detectedLanguage = "en";
+    console.log("Decision: English (default or more Latin characters)");
+  }
+
+  // Store globally
+  window.formLanguage = detectedLanguage;
+  console.log(
+    `Form language stored: window.formLanguage = "${window.formLanguage}"`,
+  );
+  console.log(`=== END DETECTION ===\n`);
+
+  return window.formLanguage;
 }
 
 // AI processing function with dropdown and language conversion support
 async function processWithAI(input, field, fieldContext = null) {
   try {
     console.log("RAW:", input);
-    
-    // Detect input language to handle mixed scenarios
-    const isEnglishInput = containsEnglishWords(input);
-    const isHindiInput = containsHindiCharacters(input);
-    
-    console.log(`Input language detection - English: ${isEnglishInput}, Hindi: ${isHindiInput}`);
-    
+
+    // Get form language to enforce in backend
+    const formLanguage = detectFormLanguage();
+
     // Prepare request body with context
     const requestBody = {
       input: input,
       field: field,
-      userLanguage: selectedLanguage,
-      detectedInputLanguage: isEnglishInput ? 'en' : (isHindiInput ? 'hi' : 'unknown')
+      userLanguage: selectedLanguage, // Always include user language
+      formLanguage: formLanguage, // Always include form language for output enforcement
     };
-    
+
     // Add dropdown context if available
-    if (fieldContext && fieldContext.type === 'dropdown') {
+    if (fieldContext && fieldContext.type === "dropdown") {
       requestBody.options = fieldContext.options;
-      requestBody.userLanguage = fieldContext.userLanguage;
-      requestBody.formLanguage = fieldContext.formLanguage;
-      console.log('Processing dropdown with options:', fieldContext.options);
+      console.log("Processing dropdown with options:", fieldContext.options);
     }
-    
-    const response = await fetch('http://localhost:3000/process', {
-      method: 'POST',
+
+    const response = await fetch("http://localhost:3000/process", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Backend processing error:', errorData);
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      console.error("Backend processing error:", errorData);
+      throw new Error(
+        errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+      );
     }
 
     const result = await response.json();
     const finalAnswer = result.value;
-    
+
     console.log("AI:", finalAnswer);
+    console.log(`Output enforced to ${formLanguage} based on form language`);
     return finalAnswer;
-    
   } catch (error) {
-    console.error('AI processing failed:', error);
-    
+    console.error("AI processing failed:", error);
+
     // Fallback to raw input if backend fails
     console.log("Falling back to raw input");
     return input;
@@ -1543,116 +2720,154 @@ async function processWithAI(input, field, fieldContext = null) {
 // Optimized form field filling with modern framework compatibility
 function fillFormField(element, value) {
   const tagName = element.tagName.toLowerCase();
-  
+
+  // Check if this is a password field and clean value (remove spaces)
+  let finalValue = value;
+  if (isPasswordField(element)) {
+    finalValue = cleanPasswordInput(value);
+    console.log(
+      `Password field detected: Cleaned "${value}" → "${finalValue}"`,
+    );
+  }
+
+  // Check if this is a username field and clean value (remove spaces)
+  if (isUsernameField(element)) {
+    finalValue = cleanUsernameInput(value);
+    console.log(
+      `Username field detected: Cleaned "${value}" → "${finalValue}"`,
+    );
+  }
+
   // Focus element before filling for better compatibility
   try {
     element.focus();
   } catch (e) {
     // Ignore focus errors
   }
-  
-  if (tagName === 'input' || tagName === 'textarea') {
+
+  if (tagName === "input" || tagName === "textarea") {
     try {
       // Use native value setter for maximum framework compatibility
-      const setter = Object.getOwnPropertyDescriptor(element.__proto__, 'value').set;
-      setter.call(element, value);
-      
+      const setter = Object.getOwnPropertyDescriptor(
+        element.__proto__,
+        "value",
+      ).set;
+      setter.call(element, finalValue);
+
       // Dispatch comprehensive events for framework detection
       const events = [
-        { type: 'input', bubbles: true, cancelable: true, composed: true },
-        { type: 'change', bubbles: true, cancelable: true, composed: true },
-        { type: 'blur', bubbles: true, cancelable: true, composed: true }
+        { type: "input", bubbles: true, cancelable: true, composed: true },
+        { type: "change", bubbles: true, cancelable: true, composed: true },
+        { type: "blur", bubbles: true, cancelable: true, composed: true },
       ];
-      
-      events.forEach(eventConfig => {
+
+      events.forEach((eventConfig) => {
         const event = new Event(eventConfig.type, eventConfig);
         element.dispatchEvent(event);
       });
-      
+
       // Special handling for React
       if (element._reactInternalInstance || element.__reactInternalInstance) {
-        const reactInstance = element._reactInternalInstance || element.__reactInternalInstance;
+        const reactInstance =
+          element._reactInternalInstance || element.__reactInternalInstance;
         if (reactInstance && reactInstance.stateNode) {
-          reactInstance.stateNode.value = value;
+          reactInstance.stateNode.value = finalValue;
         }
       }
-      
+
       // Special handling for Vue
       if (element.__vue__) {
-        element.__vue__.$emit('input', value);
+        element.__vue__.$emit("input", finalValue);
       }
-      
+
       // Special handling for Angular
       if (element.ngControl) {
-        element.ngControl.control.setValue(value);
+        element.ngControl.control.setValue(finalValue);
         element.ngControl.control.markAsDirty();
       }
-      
-      console.log(`Successfully filled ${tagName} with value: "${value}"`);
-      
+
+      console.log(`Successfully filled ${tagName} with value: "${finalValue}"`);
     } catch (error) {
-      console.error('Error with native setter, using fallback:', error);
+      console.error("Error with native setter, using fallback:", error);
       // Reliable fallback method
-      element.value = value;
-      element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-      element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+      element.value = finalValue;
+      element.dispatchEvent(
+        new Event("input", { bubbles: true, cancelable: true }),
+      );
+      element.dispatchEvent(
+        new Event("change", { bubbles: true, cancelable: true }),
+      );
     }
-    
-  } else if (tagName === 'select') {
+  } else if (tagName === "select") {
     try {
       // Use smart option matching
-      const options = Array.from(element.options).map(opt => ({
+      const options = Array.from(element.options).map((opt) => ({
         text: opt.text,
-        value: opt.value
+        value: opt.value,
       }));
-      
+
       const matchedOption = matchUserInputToOption(value, options);
-      
+
       if (matchedOption) {
         // Find the index of the matched option
         const optionElements = Array.from(element.options);
-        const selectedIndex = optionElements.findIndex(opt => 
-          (opt.text || opt.value) === (matchedOption.text || matchedOption.value)
+        const selectedIndex = optionElements.findIndex(
+          (opt) =>
+            (opt.text || opt.value) ===
+            (matchedOption.text || matchedOption.value),
         );
-        
+
         if (selectedIndex !== -1) {
           // Use native setter for better compatibility
-          const setter = Object.getOwnPropertyDescriptor(element.__proto__, 'selectedIndex').set;
+          const setter = Object.getOwnPropertyDescriptor(
+            element.__proto__,
+            "selectedIndex",
+          ).set;
           setter.call(element, selectedIndex);
-          
+
           // Dispatch change event
-          element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-          
-          console.log(`Successfully selected option ${selectedIndex}: "${optionElements[selectedIndex].text}"`);
+          element.dispatchEvent(
+            new Event("change", { bubbles: true, cancelable: true }),
+          );
+
+          console.log(
+            `Successfully selected option ${selectedIndex}: "${optionElements[selectedIndex].text}"`,
+          );
         } else {
-          console.warn(`Matched option not found in element options: "${matchedOption.text}"`);
+          console.warn(
+            `Matched option not found in element options: "${matchedOption.text}"`,
+          );
         }
       } else {
-        console.warn(`No matching option found for value: "${value}". Available options:`, options.map(opt => opt.text));
-        
+        console.warn(
+          `No matching option found for value: "${value}". Available options:`,
+          options.map((opt) => opt.text),
+        );
+
         // Fallback: select first option if available
         if (options.length > 0) {
-          const setter = Object.getOwnPropertyDescriptor(element.__proto__, 'selectedIndex').set;
+          const setter = Object.getOwnPropertyDescriptor(
+            element.__proto__,
+            "selectedIndex",
+          ).set;
           setter.call(element, 0);
-          element.dispatchEvent(new Event('change', { bubbles: true }));
+          element.dispatchEvent(new Event("change", { bubbles: true }));
         }
       }
-      
     } catch (error) {
-      console.error('Error filling select element:', error);
+      console.error("Error filling select element:", error);
       // Fallback
       if (element.options.length > 0) {
         element.selectedIndex = 0;
-        element.dispatchEvent(new Event('change', { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
       }
     }
-    
-  } else if (tagName === 'div' || tagName === 'span') {
+  } else if (tagName === "div" || tagName === "span") {
     // Handle contenteditable divs or other elements
-    if (element.contentEditable === 'true') {
+    if (element.contentEditable === "true") {
       element.textContent = value;
-      element.dispatchEvent(new Event('input', { bubbles: true }));
-      element.dispatchEvent(new Event('change', { bubbles: true }));
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
     } else {
       console.warn(`Unsupported element type for filling: ${tagName}`);
     }
@@ -1667,70 +2882,70 @@ window.speak = speak;
 window.listen = listen;
 window.startAawazz = startAawazz;
 window.stopAawazz = stopAawazz;
-console.log('Aawazz functions attached to window');
+console.log("Aawazz functions attached to window");
 
 // Add keyboard shortcut to stop Aawazz (Escape key)
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
     stopAawazz();
   }
 });
 
 // Create Aawazz button
-if (!document.getElementById('Aawazz-root')) {
+if (!document.getElementById("Aawazz-root")) {
   // Create container div
-  const container = document.createElement('div');
-  container.id = 'Aawazz-root';
-  
+  const container = document.createElement("div");
+  container.id = "Aawazz-root";
+
   // Create floating button
-  const button = document.createElement('button');
-  button.textContent = 'Start Aawazz';
-  
+  const button = document.createElement("button");
+  button.textContent = "Start Aawazz";
+
   // Style the button
-  button.style.position = 'fixed';
-  button.style.bottom = '20px';
-  button.style.right = '20px';
-  button.style.zIndex = '10000';
-  button.style.padding = '12px 20px';
-  button.style.backgroundColor = '#4285f4';
-  button.style.color = 'white';
-  button.style.border = 'none';
-  button.style.borderRadius = '24px';
-  button.style.fontSize = '14px';
-  button.style.fontWeight = '600';
-  button.style.cursor = 'pointer';
-  button.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
-  button.style.transition = 'transform 0.2s ease';
-  
+  button.style.position = "fixed";
+  button.style.bottom = "20px";
+  button.style.right = "20px";
+  button.style.zIndex = "10000";
+  button.style.padding = "12px 20px";
+  button.style.backgroundColor = "#4285f4";
+  button.style.color = "white";
+  button.style.border = "none";
+  button.style.borderRadius = "24px";
+  button.style.fontSize = "14px";
+  button.style.fontWeight = "600";
+  button.style.cursor = "pointer";
+  button.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.3)";
+  button.style.transition = "transform 0.2s ease";
+
   // Add hover effect
-  button.addEventListener('mouseenter', () => {
-    button.style.transform = 'scale(1.05)';
+  button.addEventListener("mouseenter", () => {
+    button.style.transform = "scale(1.05)";
   });
-  
-  button.addEventListener('mouseleave', () => {
-    button.style.transform = 'scale(1)';
+
+  button.addEventListener("mouseleave", () => {
+    button.style.transform = "scale(1)";
   });
-  
+
   // Set initial button text
-  button.textContent = 'Start Aawazz';
-  
+  button.textContent = "Start Aawazz";
+
   // Add click event listener
-  button.addEventListener('click', async () => {
-    console.log('Aawazz Started');
-    
+  button.addEventListener("click", async () => {
+    console.log("Aawazz Started");
+
     try {
       await startAawazz();
     } catch (error) {
-      console.error('Error:', error);
-      alert('Error: ' + error.message);
+      console.error("Error:", error);
+      alert("Error: " + error.message);
     }
   });
-  
+
   // Append button to container and container to body
   container.appendChild(button);
   document.body.appendChild(container);
-  
-  console.log('Aawazz button created');
+
+  console.log("Aawazz button created");
 }
 
-console.log('Content script loaded successfully');
+console.log("Content script loaded successfully");
