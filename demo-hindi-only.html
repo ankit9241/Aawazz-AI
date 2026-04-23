@@ -11,58 +11,260 @@
         box-sizing: border-box;
       }
 
+      :root {
+        --bg-1: #f4f7fb;
+        --bg-2: #eef2f8;
+        --bg-3: #fbf3ea;
+        --ink: #172033;
+        --muted: #62708a;
+        --line: rgba(23, 32, 51, 0.1);
+        --surface: rgba(255, 255, 255, 0.76);
+        --surface-strong: rgba(255, 255, 255, 0.92);
+        --brand: #246eff;
+        --brand-deep: #172033;
+        --success-bg: rgba(235, 255, 244, 0.95);
+        --success-text: #11653f;
+      }
+
       body {
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          "Helvetica Neue", Arial, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        font-family: "Segoe UI", "Nirmala UI", "Arial Unicode MS", sans-serif;
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(182, 214, 255, 0.85),
+            transparent 34%
+          ),
+          radial-gradient(
+            circle at top right,
+            rgba(255, 213, 186, 0.82),
+            transparent 28%
+          ),
+          linear-gradient(
+            145deg,
+            var(--bg-1) 0%,
+            var(--bg-2) 48%,
+            var(--bg-3) 100%
+          );
         min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 20px;
+        padding: 32px 20px;
+        color: var(--ink);
       }
 
       .container {
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-        max-width: 600px;
+        position: relative;
         width: 100%;
+        max-width: 1120px;
         overflow: hidden;
+        border-radius: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.85);
+        background: var(--surface);
+        box-shadow:
+          0 24px 80px rgba(23, 32, 51, 0.16),
+          inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(18px);
+      }
+
+      .container::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.36), transparent 28%),
+          radial-gradient(
+            circle at 85% 18%,
+            rgba(36, 110, 255, 0.08),
+            transparent 24%
+          );
       }
 
       .header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 30px;
-        text-align: center;
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr);
+        gap: 24px;
+        padding: 42px 42px 28px;
+        border-bottom: 1px solid rgba(23, 32, 51, 0.08);
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 18px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(36, 110, 255, 0.16);
+        background: rgba(255, 255, 255, 0.72);
+        color: #2952b8;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
       }
 
       .header h1 {
-        font-size: 28px;
-        margin-bottom: 10px;
+        font-size: clamp(2.2rem, 3.4vw, 3.8rem);
+        line-height: 1;
+        letter-spacing: -1.6px;
+        margin-bottom: 12px;
+        font-weight: 800;
       }
 
       .header p {
+        max-width: 640px;
+        font-size: 15px;
+        line-height: 1.7;
+        color: var(--muted);
+      }
+
+      .hero-stats {
+        display: grid;
+        gap: 14px;
+        align-content: start;
+      }
+
+      .stat-card {
+        padding: 18px 20px;
+        border-radius: 20px;
+        border: 1px solid rgba(23, 32, 51, 0.07);
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.9),
+          rgba(247, 249, 252, 0.78)
+        );
+        box-shadow: 0 14px 30px rgba(23, 32, 51, 0.08);
+      }
+
+      .stat-card strong {
+        display: block;
+        margin-bottom: 6px;
         font-size: 14px;
-        opacity: 0.9;
+      }
+
+      .stat-card span {
+        font-size: 13px;
+        line-height: 1.55;
+        color: var(--muted);
       }
 
       .form-wrapper {
-        padding: 30px;
+        position: relative;
+        padding: 32px 42px 42px;
       }
 
-      .form-group {
+      .success-message {
+        display: none;
         margin-bottom: 20px;
+        padding: 16px 18px;
+        border-radius: 18px;
+        border: 1px solid rgba(17, 101, 63, 0.16);
+        background: var(--success-bg);
+        color: var(--success-text);
+        font-size: 13px;
+        box-shadow: 0 14px 28px rgba(17, 101, 63, 0.08);
+      }
+
+      .info-box {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        margin-bottom: 24px;
+        padding: 18px 20px;
+        border-radius: 20px;
+        background: linear-gradient(
+          135deg,
+          rgba(23, 32, 51, 0.96),
+          rgba(40, 63, 104, 0.92)
+        );
+        color: rgba(255, 255, 255, 0.8);
+        font-size: 14px;
+        line-height: 1.7;
+        box-shadow: 0 18px 36px rgba(23, 32, 51, 0.2);
+      }
+
+      .info-box::before {
+        content: "A";
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        font-weight: 800;
+      }
+
+      .info-box strong {
+        color: #fff;
+      }
+
+      .section-card {
+        margin-top: 24px;
+        padding: 28px;
+        border-radius: 24px;
+        border: 1px solid rgba(23, 32, 51, 0.06);
+        background: rgba(255, 255, 255, 0.74);
+        box-shadow: 0 16px 40px rgba(23, 32, 51, 0.07);
+      }
+
+      .section-card:first-of-type {
+        margin-top: 0;
+      }
+
+      h3 {
+        margin-bottom: 20px;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--ink);
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+      }
+
+      .form-group.full-width {
+        grid-column: 1 / -1;
+      }
+
+      .field-shell {
+        padding: 16px 16px 14px;
+        border-radius: 18px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        background: linear-gradient(
+          180deg,
+          rgba(250, 251, 255, 0.92),
+          rgba(243, 246, 251, 0.82)
+        );
+        transition:
+          transform 0.2s ease,
+          border-color 0.2s ease,
+          box-shadow 0.2s ease;
+      }
+
+      .field-shell:hover {
+        transform: translateY(-1px);
+        border-color: rgba(36, 110, 255, 0.18);
+        box-shadow: 0 12px 24px rgba(30, 46, 80, 0.08);
       }
 
       label {
         display: block;
-        margin-bottom: 8px;
-        color: #333;
-        font-weight: 600;
-        font-size: 14px;
+        margin-bottom: 10px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--ink);
       }
 
       input[type="text"],
@@ -73,12 +275,13 @@
       select,
       textarea {
         width: 100%;
-        padding: 12px;
-        border: 2px solid #e0e0e0;
-        border-radius: 6px;
-        font-size: 14px;
-        font-family: inherit;
-        transition: border-color 0.3s;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(23, 32, 51, 0.12);
+        background: rgba(255, 255, 255, 0.88);
+        color: var(--ink);
+        font: inherit;
+        transition: all 0.2s ease;
       }
 
       input[type="text"]:focus,
@@ -89,122 +292,150 @@
       select:focus,
       textarea:focus {
         outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        border-color: var(--brand);
+        background: #fff;
+        box-shadow: 0 0 0 4px rgba(36, 110, 255, 0.12);
       }
 
       textarea {
+        min-height: 120px;
         resize: vertical;
-        min-height: 100px;
-      }
-
-      .hint {
-        font-size: 12px;
-        color: #999;
-        margin-top: 5px;
       }
 
       .dictation {
-        background: #fef3c7;
-        border: 1px solid #fcd34d;
-        border-radius: 4px;
-        padding: 10px;
-        margin-top: 8px;
-        font-size: 13px;
-        color: #92400e;
-        font-weight: 500;
         display: flex;
         align-items: center;
         gap: 8px;
+        margin-top: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(36, 110, 255, 0.1);
+        background: rgba(36, 110, 255, 0.06);
+        color: #36537d;
+        font-size: 12px;
+        font-weight: 500;
       }
 
       .dictation::before {
-        content: "🎙️";
+        content: "Voice";
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(36, 110, 255, 0.12);
+        color: #2454bf;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .choice-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .choice-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 0;
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(23, 32, 51, 0.1);
+        background: rgba(255, 255, 255, 0.9);
+        color: #23314c;
+        font-weight: 600;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+
+      .choice-chip input[type="radio"],
+      .declaration-row input[type="checkbox"] {
+        width: auto;
+        accent-color: var(--brand);
+      }
+
+      .declaration-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 18px;
+        border-radius: 18px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        background: var(--surface-strong);
+      }
+
+      .declaration-row label {
+        margin: 0;
         font-size: 14px;
+        line-height: 1.7;
+        font-weight: 500;
+        letter-spacing: 0;
+        text-transform: none;
+        color: #43506a;
       }
 
       .button-group {
         display: flex;
-        gap: 10px;
-        margin-top: 30px;
+        gap: 14px;
+        margin-top: 28px;
       }
 
       button[type="submit"],
       button[type="reset"] {
         flex: 1;
-        padding: 12px;
-        border: none;
-        border-radius: 6px;
-        font-size: 16px;
-        font-weight: 600;
+        padding: 15px 24px;
+        border-radius: 16px;
+        border: 1px solid transparent;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
         cursor: pointer;
-        transition: all 0.3s;
+        transition: all 0.2s ease;
       }
 
       button[type="submit"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: linear-gradient(135deg, var(--brand-deep), var(--brand));
+        color: #fff;
+        box-shadow: 0 18px 30px rgba(31, 71, 166, 0.24);
       }
 
       button[type="submit"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        transform: translateY(-1px);
+        box-shadow: 0 22px 34px rgba(31, 71, 166, 0.3);
       }
 
       button[type="reset"] {
-        background: #f0f0f0;
-        color: #333;
+        border-color: rgba(23, 32, 51, 0.12);
+        background: rgba(255, 255, 255, 0.72);
+        color: #2d3a52;
       }
 
       button[type="reset"]:hover {
-        background: #e0e0e0;
+        background: rgba(255, 255, 255, 0.96);
       }
 
-      .info-box {
-        background: #f3f4f6;
-        border-left: 4px solid #667eea;
-        padding: 15px;
-        border-radius: 4px;
-        margin-bottom: 20px;
-        font-size: 14px;
-        color: #555;
-      }
-
-      .info-box strong {
-        color: #333;
-      }
-
-      .success-message {
-        display: none;
-        background: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-        padding: 15px;
-        border-radius: 6px;
-        margin-bottom: 20px;
-      }
-
-      h3 {
-        margin-top: 25px;
-        margin-bottom: 15px;
-        color: #333;
-      }
-
-      h3:first-of-type {
-        margin-top: 0;
-      }
-
-      @media (max-width: 600px) {
-        .form-wrapper {
-          padding: 20px;
+      @media (max-width: 720px) {
+        body {
+          padding: 20px 14px;
         }
 
         .header {
+          grid-template-columns: 1fr;
+          padding: 30px 24px 22px;
+        }
+
+        .form-wrapper {
+          padding: 24px;
+        }
+
+        .section-card {
           padding: 20px;
         }
 
-        .header h1 {
-          font-size: 24px;
+        .form-grid {
+          grid-template-columns: 1fr;
         }
 
         .button-group {
@@ -216,163 +447,286 @@
   <body>
     <div class="container">
       <div class="header">
-        <h1>🎤 Aawazz Demo</h1>
-        <p>Voice-Powered Form Filling</p>
+        <div>
+          <div class="eyebrow">Premium Voice Form</div>
+          <h1>Aawazz Demo</h1>
+          <p>
+            Voice-powered Hindi form filling with a cleaner, more polished
+            website-style experience that feels modern and premium.
+          </p>
+        </div>
+
+        <div class="hero-stats">
+          <div class="stat-card">
+            <strong>Fast completion</strong>
+            <span
+              >Grouped sections and cleaner spacing help users move through the
+              form naturally.</span
+            >
+          </div>
+          <div class="stat-card">
+            <strong>Voice-first clarity</strong>
+            <span
+              >Dictation prompts stay visible and feel integrated into the form
+              instead of looking secondary.</span
+            >
+          </div>
+        </div>
       </div>
 
       <div class="form-wrapper">
-        <!-- Success Message -->
         <div class="success-message" id="successMessage">
-          ✓ Form submitted successfully! Check console for details.
+          Form submitted successfully! Check console for details.
         </div>
 
-        <!-- Info Box -->
         <div class="info-box">
-          <strong>💡 कैसे उपयोग करें:</strong> Aawazz आइकन पर क्लिक करके बोलें।
-          एक्सटेंशन आपकी हिंदी बोली को स्वचालित रूप से कन्वर्ट करेगा और फॉर्म को
-          भर देगा।
+          <div>
+            <strong>कैसे उपयोग करें:</strong> Aawazz आइकन पर क्लिक करके बोलें।
+            एक्सटेंशन आपकी हिंदी बोली को स्वतः कन्वर्ट करेगा और फॉर्म भरने में
+            मदद करेगा।
+          </div>
         </div>
 
-        <!-- Hindi Form -->
         <form id="hindiForm" onsubmit="handleSubmit(event)">
-          <!-- व्यक्तिगत जानकारी -->
-          <h3>व्यक्तिगत जानकारी</h3>
+          <section class="section-card">
+            <h3>व्यक्तिगत जानकारी</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="fullNameHi">पूरा नाम</label>
+                  <input
+                    type="text"
+                    id="fullNameHi"
+                    name="fullName"
+                    placeholder="उदा. अंकित कुमार"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "अंकित कुमार"</div>
+                </div>
+              </div>
 
-          <div class="form-group">
-            <label for="fullNameHi">पूरा नाम</label>
-            <input
-              type="text"
-              id="fullNameHi"
-              name="fullName"
-              placeholder="उदा. अंकित कुमार"
-              required
-            />
-            <div class="dictation">वाक दीजिए: "अंकित कुमार"</div>
-          </div>
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="fatherNameHi">पिता का नाम</label>
+                  <input
+                    type="text"
+                    id="fatherNameHi"
+                    name="fatherName"
+                    placeholder="उदा. राज कुमार"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "राज कुमार"</div>
+                </div>
+              </div>
 
-          <div class="form-group">
-            <label for="emailHi">ईमेल पता</label>
-            <input
-              type="email"
-              id="emailHi"
-              name="email"
-              placeholder="name@example.com"
-              required
-            />
-            <div class="dictation">
-              वाक दीजिए: "ankit dot kumar at gmail dot com"
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="casteHi">जाति</label>
+                  <input
+                    type="text"
+                    id="casteHi"
+                    name="caste"
+                    placeholder="उदा. शर्मा"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "शर्मा"</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="categoryHi">श्रेणी</label>
+                  <select id="categoryHi" name="category" required>
+                    <option value="">श्रेणी चुनें</option>
+                    <option value="general">सामान्य</option>
+                    <option value="obc">ओबीसी</option>
+                    <option value="sc">अनुसूचित जाति</option>
+                    <option value="st">अनुसूचित जनजाति</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="emailHi">ईमेल पता</label>
+                  <input
+                    type="email"
+                    id="emailHi"
+                    name="email"
+                    placeholder="name@example.com"
+                    required
+                  />
+                  <div class="dictation">
+                    वाक दीजिए: "ankit dot kumar at gmail dot com"
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="phoneHi">फोन नंबर</label>
+                  <input
+                    type="tel"
+                    id="phoneHi"
+                    name="phone"
+                    placeholder="10-digit phone number"
+                    required
+                  />
+                  <div class="dictation">
+                    वाक दीजिए: "नौ नौ अठारह छः छः पाँच पाँच"
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div class="form-group">
-            <label for="phoneHi">फोन नंबर</label>
-            <input
-              type="tel"
-              id="phoneHi"
-              name="phone"
-              placeholder="10-digit phone number"
-              required
-            />
-            <div class="dictation">
-              वाक दीजिए: "नौ नौ अठारह छः छः पाँच पाँच"
+          <section class="section-card">
+            <h3>पता</h3>
+            <div class="form-grid">
+              <div class="form-group full-width">
+                <div class="field-shell">
+                  <label for="addressHi">सड़क का पता</label>
+                  <input
+                    type="text"
+                    id="addressHi"
+                    name="address"
+                    placeholder="उदा. 123 मुख्य सड़क"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "मुंबई सेक्टर फाइव"</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="villageHi">गाँव</label>
+                  <input
+                    type="text"
+                    id="villageHi"
+                    name="village"
+                    placeholder="उदा. बोरिवली"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "बोरिवली"</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="districtHi">जिला</label>
+                  <input
+                    type="text"
+                    id="districtHi"
+                    name="district"
+                    placeholder="उदा. मुंबई"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "मुंबई"</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="cityHi">शहर</label>
+                  <input
+                    type="text"
+                    id="cityHi"
+                    name="city"
+                    placeholder="उदा. मुंबई"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "बोरिवली" या "दिल्ली"</div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="stateHi">राज्य</label>
+                  <select id="stateHi" name="state" required>
+                    <option value="">राज्य चुनें</option>
+                    <option value="maharashtra">महाराष्ट्र</option>
+                    <option value="delhi">दिल्ली</option>
+                    <option value="karnataka">कर्नाटक</option>
+                    <option value="tamil-nadu">तमिलनाडु</option>
+                    <option value="uttar-pradesh">उत्तर प्रदेश</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="zipCodeHi">जिप/पिन कोड</label>
+                  <input
+                    type="text"
+                    id="zipCodeHi"
+                    name="zipcode"
+                    placeholder="उदा. 400001"
+                    required
+                  />
+                  <div class="dictation">
+                    वाक दीजिए: "चार शून्य शून्य शून्य एक"
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <!-- पता -->
-          <h3>पता</h3>
+          <section class="section-card">
+            <h3>खाता</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="usernameHi">यूजरनेम</label>
+                  <input
+                    type="text"
+                    id="usernameHi"
+                    name="username"
+                    placeholder="उदा. ankit.kumar"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "ankit dot kumar"</div>
+                </div>
+              </div>
 
-          <div class="form-group">
-            <label for="addressHi">सड़क का पता</label>
-            <input
-              type="text"
-              id="addressHi"
-              name="address"
-              placeholder="उदा. 123 मुख्य सड़क"
-              required
-            />
-            <div class="dictation">वाक दीजिए: "मुम्बई सेक्टर फाइव"</div>
-          </div>
+              <div class="form-group">
+                <div class="field-shell">
+                  <label for="passwordHi">पासवर्ड</label>
+                  <input
+                    type="password"
+                    id="passwordHi"
+                    name="password"
+                    placeholder="सुरक्षित पासवर्ड"
+                    required
+                  />
+                  <div class="dictation">वाक दीजिए: "one two three abc"</div>
+                </div>
+              </div>
+            </div>
+          </section>
 
-          <div class="form-group">
-            <label for="cityHi">शहर</label>
-            <input
-              type="text"
-              id="cityHi"
-              name="city"
-              placeholder="उदा. मुंबई"
-              required
-            />
-            <div class="dictation">वाक दीजिए: "बोरिवली" या "दिल्ली"</div>
-          </div>
+          <section class="section-card">
+            <h3>अतिरिक्त जानकारी</h3>
+            <div class="form-grid">
+              <div class="form-group full-width">
+                <div class="field-shell">
+                  <label for="messageHi">संदेश/टिप्पणी</label>
+                  <textarea
+                    id="messageHi"
+                    name="message"
+                    placeholder="कोई अतिरिक्त जानकारी"
+                  ></textarea>
+                  <div class="dictation">
+                    वाक दीजिए: "मुझे और सुझाव की जानकारी चाहिए"
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          <div class="form-group">
-            <label for="stateHi">राज्य</label>
-            <select id="stateHi" name="state" required>
-              <option value="">राज्य चुनें</option>
-              <option value="maharashtra">महाराष्ट्र</option>
-              <option value="delhi">दिल्ली</option>
-              <option value="karnataka">कर्नाटक</option>
-              <option value="tamil-nadu">तमिलनाडु</option>
-              <option value="uttar-pradesh">उत्तर प्रदेश</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="zipCodeHi">जिप/पिन कोड</label>
-            <input
-              type="text"
-              id="zipCodeHi"
-              name="zipcode"
-              placeholder="उदा. 400001"
-              required
-            />
-            <div class="dictation">वाक दीजिए: "तलक तलस क सॊ"</div>
-          </div>
-
-          <!-- खाता -->
-          <h3>खाता</h3>
-
-          <div class="form-group">
-            <label for="usernameHi">यूजरनाम</label>
-            <input
-              type="text"
-              id="usernameHi"
-              name="username"
-              placeholder="उदा. ankit.kumar"
-              required
-            />
-            <div class="dictation">वाक दीजिए: "ankit dot kumar"</div>
-          </div>
-
-          <div class="form-group">
-            <label for="passwordHi">पासवर्ड</label>
-            <input
-              type="password"
-              id="passwordHi"
-              name="password"
-              placeholder="सुरक्षित पासवर्ड"
-              required
-            />
-            <div class="dictation">वाक दीजिए: "one two three abc"</div>
-          </div>
-
-          <!-- अतिरिक्त जानकारी -->
-          <h3>अतिरिक्त जानकारी</h3>
-
-          <div class="form-group">
-            <label for="messageHi">संदेश/टिप्पणी</label>
-            <textarea
-              id="messageHi"
-              name="message"
-              placeholder="कोई अतिरिक्त जानकारी"
-            ></textarea>
-            <div class="dictation">वाक दीजिए: "मुझे बॉत वँ सजीस की कमी"</div>
-          </div>
-
-          <div class="button-group">
-            <button type="submit">फॉर्म सबमिट करें</button>
-            <button type="reset">सब कुछ साफ़ करें</button>
-          </div>
+            <div class="button-group">
+              <button type="submit">फॉर्म सबमिट करें</button>
+              <button type="reset">सब कुछ साफ़ करें</button>
+            </div>
+          </section>
         </form>
       </div>
     </div>
@@ -380,7 +734,6 @@
     <script>
       const successMessage = document.getElementById("successMessage");
 
-      // Handle form submission
       function handleSubmit(event) {
         event.preventDefault();
 
@@ -388,21 +741,17 @@
         const formData = new FormData(form);
         const data = Object.fromEntries(formData);
 
-        // Log the form data
         console.log("Form Data:", data);
         console.log("Form Language: hi");
 
-        // Show success message
         successMessage.style.display = "block";
         successMessage.scrollIntoView({ behavior: "smooth" });
 
-        // Hide message after 3 seconds
         setTimeout(() => {
           successMessage.style.display = "none";
         }, 3000);
       }
 
-      // Set form language to Hindi
       document.documentElement.setAttribute("lang", "hi");
       console.log("Form Language: hi");
     </script>

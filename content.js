@@ -36,6 +36,11 @@ function safeGetAttribute(element, attribute) {
   return element ? (element.getAttribute(attribute) || "").trim() : "";
 }
 
+function getTextFromPreviousSibling(element) {
+  const previousSibling = element ? element.previousElementSibling : null;
+  return safeGetTextContent(previousSibling);
+}
+
 function generateFieldId(index) {
   return "aawazz-field-" + index;
 }
@@ -50,20 +55,103 @@ function extractFieldLabel(element, index) {
     }
   }
 
-  // 2. Check placeholder
+  // 2. Check previous sibling text
+  const previousSiblingText = getTextFromPreviousSibling(element);
+  if (previousSiblingText) {
+    return previousSiblingText;
+  }
+
+  // 3. Check parent container text
+  const parentContainerText = safeGetTextContent(element.parentElement);
+  if (parentContainerText) {
+    return parentContainerText;
+  }
+
+  // 4. Check table cell (td) before input
+  const tableCell = element.closest("td");
+  if (tableCell) {
+    const previousTableCellText = getTextFromPreviousSibling(tableCell);
+    if (previousTableCellText) {
+      return previousTableCellText;
+    }
+  }
+
+  // 5. Check placeholder
   const placeholderText = safeGetAttribute(element, "placeholder");
   if (placeholderText) {
     return placeholderText;
   }
 
-  // 3. Check aria-label
+  // 6. Check aria-label
   const ariaLabelText = safeGetAttribute(element, "aria-label");
   if (ariaLabelText) {
     return ariaLabelText;
   }
 
-  // 4. Fallback to "Field X"
+  // 7. Fallback to "Field X"
   return "Field " + (index + 1);
+}
+
+/**
+ * Extract label text from radio/checkbox input
+ * Checks for associated label, data-label attribute, or value
+ *
+ * @param {Element} element - Radio or checkbox element
+ * @returns {string} - Label text for the option
+ */
+function extractOptionLabel(element) {
+  // 1. Check for associated label[for=id]
+  if (element.id) {
+    const labelElement = document.querySelector(`label[for="${element.id}"]`);
+    if (labelElement) {
+      const labelText = safeGetTextContent(labelElement);
+      if (labelText) {
+        return labelText;
+      }
+    }
+  }
+
+  // 2. Check data-label attribute
+  const dataLabel = safeGetAttribute(element, "data-label");
+  if (dataLabel) {
+    return dataLabel;
+  }
+
+  // 3. Check for next sibling label element
+  let nextSibling = element.nextElementSibling;
+  while (nextSibling) {
+    if (nextSibling.tagName.toLowerCase() === "label") {
+      const labelText = safeGetTextContent(nextSibling);
+      if (labelText) {
+        return labelText;
+      }
+    }
+    // Only check immediate siblings, not deep hierarchy
+    if (
+      nextSibling.tagName.toLowerCase() === "div" &&
+      nextSibling.classList &&
+      nextSibling.classList.contains("checkbox-option")
+    ) {
+      nextSibling = nextSibling.nextElementSibling;
+      continue;
+    }
+    break;
+  }
+
+  // 4. Check element value
+  const value = safeGetAttribute(element, "value");
+  if (value) {
+    return value;
+  }
+
+  // 5. Fallback to element text content
+  const text = safeGetTextContent(element);
+  if (text) {
+    return text;
+  }
+
+  // 6. Last resort - use name attribute
+  return element.name || "Option";
 }
 
 function getFieldType(element) {
@@ -95,31 +183,119 @@ function isFieldVisible(element) {
 }
 
 function extractFields() {
-  const fields = [];
+  console.log("\n╔════════════════════════════════════════╗");
+  console.log("║ PHASE 1: EXTRACT RAW ELEMENTS          ║");
+  console.log("╚════════════════════════════════════════╝");
+
+  // PHASE 1: Collect all raw elements by category
+  // ═══════════════════════════════════════════════════════════
+  const singleElements = []; // Text, email, date, select, textarea
+  const radioElements = [];
+  const checkboxElements = [];
 
   // Use safe querySelector to find all relevant form elements
-  // Exclude Aawazz UI elements to avoid picking up our own inputs
-  const selector =
-    'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([id*="Aawazz"]):not([id*="aawazz"]), textarea:not([id*="Aawazz"]):not([id*="aawazz"]), select:not([id*="Aawazz"]):not([id*="aawazz"])';
-  const formElements = document.querySelectorAll(selector);
+  // Simplified selector to avoid pseudo-selector complexity
+  const inputElements = document.querySelectorAll('input, textarea, select');
+  
+  console.log(`Total form elements found: ${inputElements.length}`);
 
-  // Process each form element
-  formElements.forEach((element, index) => {
-    // Skip if field is not visible (handles hidden forms)
+  const formElements = Array.from(inputElements).filter((element) => {
+    // Skip hidden inputs
+    if (element.type === "hidden") return false;
+    
+    // Skip submit/button/reset
+    if (element.type === "submit" || element.type === "button" || element.type === "reset") return false;
+    
+    // Skip Aawazz UI elements
+    if (element.id && (element.id.includes("Aawazz") || element.id.includes("aawazz"))) return false;
+    
+    return true;
+  });
+
+  console.log(`After filtering: ${formElements.length} usable elements`);
+
+  formElements.forEach((element) => {
+    console.log(`Processing element: type="${element.type}", name="${element.name}", id="${element.id}"`);
+    
+    // Skip if field is not visible
     if (!isFieldVisible(element)) {
-      console.log("Skipping hidden field:", element);
-      return;
-    }
-
-    // Skip if field is not empty
-    if (!isFieldEmpty(element)) {
+      console.log("  [SKIP] Hidden field:", element.name || element.id);
       return;
     }
 
     // Skip if element is within Aawazz UI container
     const aawazzContainer = document.getElementById("Aawazz-ui");
     if (aawazzContainer && aawazzContainer.contains(element)) {
-      console.log("Skipping Aawazz UI element:", element);
+      console.log("  [SKIP] Aawazz UI element:", element.name || element.id);
+      return;
+    }
+
+    // Categorize by type
+    if (element.type === "radio") {
+      console.log(`  [RADIO] ✓ Adding to radio collection: ${element.name}`);
+      radioElements.push(element);
+    } else if (element.type === "checkbox") {
+      console.log(`  [CHECKBOX] ✓ Adding to checkbox collection: ${element.name}`);
+      checkboxElements.push(element);
+    } else {
+      console.log(`  [SINGLE] ✓ Adding to single collection: ${element.name || element.id} (${element.type})`);
+      singleElements.push(element);
+    }
+  });
+
+  console.log(`✓ Phase 1 Summary: ${singleElements.length} singles, ${radioElements.length} radios, ${checkboxElements.length} checkboxes`);
+
+  // ═══════════════════════════════════════════════════════════
+  console.log("\n╔════════════════════════════════════════╗");
+  console.log("║ PHASE 2: GROUP ELEMENTS                ║");
+  console.log("╚════════════════════════════════════════╝");
+
+  // PHASE 2: Group radio and checkbox elements by name
+  // ═══════════════════════════════════════════════════════════
+  const radioGroups = new Map();
+  const checkboxGroups = new Map();
+
+  // Group radios by name
+  radioElements.forEach((radio) => {
+    const groupName = radio.name;
+    if (!radioGroups.has(groupName)) {
+      radioGroups.set(groupName, []);
+      console.log(`  [GROUP] Creating radio group: "${groupName}"`);
+    }
+    radioGroups.get(groupName).push(radio);
+  });
+
+  // Group checkboxes by name
+  checkboxElements.forEach((checkbox) => {
+    const groupName = checkbox.name;
+    if (!checkboxGroups.has(groupName)) {
+      checkboxGroups.set(groupName, []);
+      console.log(`  [GROUP] Creating checkbox group: "${groupName}"`);
+    }
+    checkboxGroups.get(groupName).push(checkbox);
+  });
+
+  console.log(`Grouping complete: ${radioGroups.size} radio groups, ${checkboxGroups.size} checkbox groups`);
+
+  // ═══════════════════════════════════════════════════════════
+  console.log("\n╔════════════════════════════════════════╗");
+  console.log("║ PHASE 3: CREATE FIELD OBJECTS          ║");
+  console.log("╚════════════════════════════════════════╝");
+
+  // PHASE 3: Create field objects from grouped/categorized elements
+  // ═══════════════════════════════════════════════════════════
+  const fields = [];
+
+  // Process SINGLE elements
+  console.log("\n→ Processing single elements:");
+  singleElements.forEach((element, index) => {
+    // Skip if field is not empty (only for inputs/textareas)
+    if (
+      (element.tagName.toLowerCase() === "input" ||
+        element.tagName.toLowerCase() === "textarea") &&
+      !isFieldEmpty(element)
+    ) {
+      console.log(`    [SKIP] Field not empty: ${element.name || element.id}`);
       return;
     }
 
@@ -128,24 +304,92 @@ function extractFields() {
       element.id = generateFieldId(index);
     }
 
-    // Determine field ID
     const fieldId = element.id || element.name || generateFieldId(index);
-
-    // Extract field type and label
-    const fieldType = getFieldType(element);
+    let fieldType = getFieldType(element);
     const fieldLabel = extractFieldLabel(element, index);
 
-    // Create field object
-    const fieldObject = {
-      id: fieldId,
-      type: fieldType,
-      label: fieldLabel,
-      element: element,
-    };
+    // Check if this is a date field
+    if (isDateField(element, fieldLabel)) {
+      fieldType = "date-field";
+      const dateFormat = detectDateFormat(element);
+      console.log(
+        `    [DATE] "${fieldLabel}" - format: ${dateFormat}`,
+      );
 
-    // Add to fields array
-    fields.push(fieldObject);
+      fields.push({
+        id: fieldId,
+        type: fieldType,
+        label: fieldLabel,
+        element: element,
+        dateFormat: dateFormat,
+      });
+    } else {
+      console.log(
+        `    [FIELD] "${fieldLabel}" (${fieldType})`,
+      );
+      fields.push({
+        id: fieldId,
+        type: fieldType,
+        label: fieldLabel,
+        element: element,
+      });
+    }
   });
+
+  // Process RADIO GROUPS - create one field per group
+  console.log("\n→ Processing radio groups:");
+  radioGroups.forEach((radioElements, groupName) => {
+    const firstRadio = radioElements[0];
+    const fieldLabel = extractFieldLabel(firstRadio, fields.length) || groupName;
+
+    const options = radioElements.map((radio) => ({
+      text: extractOptionLabel(radio),
+      value: radio.value,
+      element: radio,
+    }));
+
+    console.log(
+      `    [RADIO-GROUP] "${fieldLabel}" (${options.length} options)`,
+    );
+
+    fields.push({
+      id: groupName,
+      type: "radio-group",
+      label: fieldLabel,
+      element: firstRadio,
+      options: options,
+      allElements: radioElements,
+    });
+  });
+
+  // Process CHECKBOX GROUPS - create one field per group
+  console.log("\n→ Processing checkbox groups:");
+  checkboxGroups.forEach((checkboxElements, groupName) => {
+    const firstCheckbox = checkboxElements[0];
+    const fieldLabel =
+      extractFieldLabel(firstCheckbox, fields.length) || groupName;
+
+    const options = checkboxElements.map((checkbox) => ({
+      text: extractOptionLabel(checkbox),
+      value: checkbox.value,
+      element: checkbox,
+    }));
+
+    console.log(
+      `    [CHECKBOX-GROUP] "${fieldLabel}" (${options.length} options)`,
+    );
+
+    fields.push({
+      id: groupName,
+      type: "checkbox-group",
+      label: fieldLabel,
+      element: firstCheckbox,
+      options: options,
+      allElements: checkboxElements,
+    });
+  });
+
+  console.log(`\n✓ Grouping and field creation complete. Total fields: ${fields.length}\n`);
 
   return fields;
 }
@@ -354,6 +598,69 @@ function isPhoneField(element) {
   const phoneIndicators = ["phone", "mobile", "contact", "telephone"];
 
   return phoneIndicators.some((indicator) => label.includes(indicator));
+}
+
+// Helper function to check if a field is a date field
+function isDateField(element, fieldLabel = "") {
+  if (!element) return false;
+
+  const inputType = (element.type || "").toLowerCase();
+  if (inputType === "date") return true;
+
+  const label = (element.name || element.id || "").toLowerCase();
+  const combinedLabel = (label + " " + (fieldLabel || "")).toLowerCase();
+  const dateIndicators = [
+    "date",
+    "dob",
+    "birth",
+    "birthday",
+    "जन्म",
+    "तारीख",
+    "डेट",
+  ];
+
+  return dateIndicators.some((indicator) => combinedLabel.includes(indicator));
+}
+
+/**
+ * Detect date format from element placeholder or label
+ * @param {HTMLElement} element - The date input element
+ * @returns {string} - Format type: "yyyy-mm-dd", "dd-mm-yyyy", "dd/mm/yyyy", or "auto"
+ */
+function detectDateFormat(element) {
+  if (!element) return "auto";
+
+  // Check placeholder
+  const placeholder = (element.placeholder || "").toLowerCase();
+  if (placeholder.includes("yyyy-mm-dd") || placeholder.includes("yyyy-mm-dd")) {
+    return "yyyy-mm-dd";
+  }
+  if (placeholder.includes("dd-mm-yyyy")) {
+    return "dd-mm-yyyy";
+  }
+  if (placeholder.includes("dd/mm/yyyy")) {
+    return "dd/mm/yyyy";
+  }
+
+  // Check aria-label
+  const ariaLabel = (element.getAttribute("aria-label") || "").toLowerCase();
+  if (ariaLabel.includes("yyyy-mm-dd")) return "yyyy-mm-dd";
+  if (ariaLabel.includes("dd-mm-yyyy")) return "dd-mm-yyyy";
+  if (ariaLabel.includes("dd/mm/yyyy")) return "dd/mm/yyyy";
+
+  // Check title
+  const title = (element.title || "").toLowerCase();
+  if (title.includes("yyyy-mm-dd")) return "yyyy-mm-dd";
+  if (title.includes("dd-mm-yyyy")) return "dd-mm-yyyy";
+  if (title.includes("dd/mm/yyyy")) return "dd/mm/yyyy";
+
+  // For text-based inputs (not type=date), use dd-mm-yyyy as default
+  if (element.type !== "date") {
+    return "dd-mm-yyyy";
+  }
+
+  // For date inputs, use yyyy-mm-dd (browser standard)
+  return "yyyy-mm-dd";
 }
 
 // Helper function to check if a field is a username field
@@ -640,6 +947,12 @@ function getCanonicalFieldType(htmlFieldType) {
  * @returns {boolean}
  */
 function shouldSkipAIProcessing(element, fieldLabel = "") {
+  // ✅ FIX 4: STOP AI FOR DATE COMPLETELY
+  if (isDateField(element, fieldLabel)) {
+    console.log(`Skipping AI: Date field`);
+    return true;
+  }
+
   const fieldType = detectFieldType(element, fieldLabel);
 
   // Skip AI for password (always)
@@ -1043,6 +1356,371 @@ async function handleEmail(input, element) {
 }
 
 /**
+ * Handle radio button group
+ * - Speak all options
+ * - Listen to user selection
+ * - Match input to option
+ * - Confirm selection
+ * - Check the selected radio
+ *
+ * @param {Object} field - Radio group field with options
+ * @param {string} input - Raw user input
+ * @param {string} formLanguage - Form language (hi or en)
+ * @returns {Promise<string>} - Selection confirmation
+ */
+async function handleRadioGroup(field, input, formLanguage) {
+  console.log("\n=== HANDLE RADIO GROUP ===");
+  console.log(`Field: "${field.label}"`);
+  console.log(`Options: ${field.options.map((o) => o.text).join(", ")}`);
+  console.log(`User input: "${input}"`);
+
+  // ✓ Question was already asked and listened in main loop
+  // ✓ Input was already captured
+  // → Just match and confirm
+
+  // Step 1: Match input to option
+  const matchedOption = matchOptionFromInput(input, field.options);
+
+  if (!matchedOption) {
+    console.log("❌ No match found for input");
+    const notFoundMsg =
+      formLanguage === "hi"
+        ? "विकल्प में मेल नहीं खाया। फिर से कोशिश करें।"
+        : "No match found. Please try again.";
+    await speak(notFoundMsg);
+    return null; // Return null to retry
+  }
+
+  console.log(`✓ Matched option: "${matchedOption.text}"`);
+
+  // Step 2: Confirm selection
+  const confirmed = await confirmSelection(field.label, [matchedOption]);
+
+  if (confirmed) {
+    // Check the selected radio button
+    matchedOption.element.checked = true;
+
+    // Trigger change event
+    const event = new Event("change", { bubbles: true });
+    matchedOption.element.dispatchEvent(event);
+
+    console.log(`✓ Radio checked: "${matchedOption.text}"`);
+    console.log("=== END RADIO GROUP ===\n");
+
+    return matchedOption.text;
+  } else {
+    console.log("User did not confirm selection");
+    return null; // Return null to retry
+  }
+}
+
+/**
+ * Handle checkbox group
+ * - Speak all options
+ * - Listen to user selections (can select multiple)
+ * - Match inputs to options
+ * - Confirm selections
+ * - Check all selected checkboxes
+ *
+ * @param {Object} field - Checkbox group field with options
+ * @param {string} input - Raw user input (can have multiple selections)
+ * @param {string} formLanguage - Form language (hi or en)
+ * @returns {Promise<string>} - Selection confirmation
+ */
+async function handleCheckboxGroup(field, input, formLanguage) {
+  console.log("\n=== HANDLE CHECKBOX GROUP ===");
+  console.log(`Field: "${field.label}"`);
+  console.log(`Options: ${field.options.map((o) => o.text).join(", ")}`);
+  console.log(`User input: "${input}"`);
+
+  // ✓ Question was already asked and listened in main loop
+  // ✓ Input was already captured
+  // → Just match and confirm
+
+  // Step 1: Match multiple inputs to options
+  const matchedOptions = matchMultipleOptions(input, field.options);
+
+  if (matchedOptions.length === 0) {
+    console.log("❌ No matches found for input");
+    const notFoundMsg =
+      formLanguage === "hi"
+        ? "विकल्प में मेल नहीं खाया। फिर से कोशिश करें।"
+        : "No match found. Please try again.";
+    await speak(notFoundMsg);
+    return null; // Return null to retry
+  }
+
+  console.log(
+    `✓ Matched options: ${matchedOptions.map((o) => o.text).join(", ")}`,
+  );
+
+  // Step 2: Confirm selections
+  const confirmed = await confirmSelection(field.label, matchedOptions);
+
+  if (confirmed) {
+    // Check all selected checkboxes
+    matchedOptions.forEach((option) => {
+      option.element.checked = true;
+
+      // Trigger change event
+      const event = new Event("change", { bubbles: true });
+      option.element.dispatchEvent(event);
+
+      console.log(`✓ Checkbox checked: "${option.text}"`);
+    });
+
+    console.log("=== END CHECKBOX GROUP ===\n");
+
+    return matchedOptions.map((o) => o.text).join(", ");
+  } else {
+    console.log("User did not confirm selections");
+    return null; // Return null to retry
+  }
+}
+
+/**
+ * Handle date field (DOB, Date, etc.)
+ * - Listen to user input (day month year)
+ * - Convert to proper format: YYYY-MM-DD
+ * - Support Hindi month names
+ * - Fill the date field
+ *
+ * @param {Object} field - Date field
+ * @param {string} input - Raw date input from speech
+ * @returns {Promise<string>} - Formatted date
+ */
+async function handleDateField(field, input) {
+  console.log("\n=== HANDLE DATE FIELD ===");
+  console.log(`Field: "${field.label}"`);
+  console.log(`Raw input: "${input}"`);
+  console.log(`Detected format: "${field.dateFormat || "auto"}"`);
+
+  // Parse and format the date using detected format
+  const formattedDate = parseAndFormatDate(input, field.dateFormat);
+  console.log(`Formatted date: "${formattedDate}"`);
+
+  if (!formattedDate) {
+    console.log("Failed to parse date");
+    await speak("तारीख समझ नहीं आई। फिर से कहें।");
+    return null;
+  }
+
+  console.log("=== END DATE FIELD ===\n");
+  return formattedDate;
+}
+
+/**
+ * Parse and format date from spoken input
+ * Supports multiple formats:
+ * - "11 9 2006" → "2006-09-11" (YYYY-MM-DD) or "11-09-2006" (DD-MM-YYYY)
+ * - "11 सितंबर 2006" → "2006-09-11" (YYYY-MM-DD) or "11-09-2006" (DD-MM-YYYY)
+ * - "11 September 2006" → "2006-09-11" (YYYY-MM-DD) or "11-09-2006" (DD-MM-YYYY)
+ *
+ * @param {string} input - Raw date input from speech
+ * @param {string} outputFormat - Output format: "yyyy-mm-dd", "dd-mm-yyyy", "dd/mm/yyyy", or "auto"
+ * @returns {string} - Formatted date in requested format
+ */
+function parseAndFormatDate(input, outputFormat = "auto") {
+  if (!input) return null;
+
+  console.log(`Parsing date input: "${input}", requested format: "${outputFormat}"`);
+
+  // Normalize output format
+  const format = (outputFormat || "auto").toLowerCase();
+
+  // ═══════════════════════════════════════════════════════════
+  // CHECK 1: Already in YYYY-MM-DD format? 
+  // ═══════════════════════════════════════════════════════════
+  const isoRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (isoRegex.test(input)) {
+    console.log(`✓ Already in ISO format (YYYY-MM-DD): "${input}"`);
+    // If text field expects DD-MM-YYYY, convert it
+    if (format === "dd-mm-yyyy") {
+      const [year, month, day] = input.split("-");
+      const converted = `${day}-${month}-${year}`;
+      console.log(`→ Converting to DD-MM-YYYY: "${converted}"`);
+      return converted;
+    } else if (format === "dd/mm/yyyy") {
+      const [year, month, day] = input.split("-");
+      const converted = `${day}/${month}/${year}`;
+      console.log(`→ Converting to DD/MM/YYYY: "${converted}"`);
+      return converted;
+    }
+    return input;
+  }
+
+  // Hindi month mappings
+  const hindiMonths = {
+    जनवरी: 1,
+    फरवरी: 2,
+    मार्च: 3,
+    अप्रैल: 4,
+    मई: 5,
+    जून: 6,
+    जुलाई: 7,
+    अगस्त: 8,
+    सितंबर: 9,
+    अक्टूबर: 10,
+    नवंबर: 11,
+    दिसंबर: 12,
+  };
+
+  // English month mappings
+  const englishMonths = {
+    january: 1,
+    february: 2,
+    march: 3,
+    april: 4,
+    may: 5,
+    june: 6,
+    july: 7,
+    august: 8,
+    september: 9,
+    october: 10,
+    november: 11,
+    december: 12,
+    jan: 1,
+    feb: 2,
+    mar: 3,
+    apr: 4,
+    may: 5,
+    jun: 6,
+    jul: 7,
+    aug: 8,
+    sep: 9,
+    oct: 10,
+    nov: 11,
+    dec: 12,
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // CHECK 2: DD-MM-YYYY or DD/MM/YYYY format (with dashes/slashes)
+  // ═══════════════════════════════════════════════════════════
+  const ddmmyyyyRegex = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/;
+  const ddmmyyyyMatch = input.match(ddmmyyyyRegex);
+  if (ddmmyyyyMatch) {
+    const day = parseInt(ddmmyyyyMatch[1]);
+    const month = parseInt(ddmmyyyyMatch[2]);
+    const year = parseInt(ddmmyyyyMatch[3]);
+    console.log(
+      `✓ Detected DD-MM-YYYY format: day=${day}, month=${month}, year=${year}`,
+    );
+
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
+      // Format based on requested output
+      let formattedDate = formatDateByType(
+        day,
+        month,
+        year,
+        format,
+      );
+      console.log(`Final formatted date: "${formattedDate}"`);
+      return formattedDate;
+    } else {
+      console.log("Invalid day/month values in DD-MM-YYYY format");
+      return null;
+    }
+  }
+
+  // Split the input by spaces for other formats
+  const parts = input.trim().split(/\s+/);
+  console.log(`Parts: ${parts.join(", ")}`);
+
+  let day, month, year;
+
+  if (parts.length === 3) {
+    // ═══════════════════════════════════════════════════════════
+    // FORMAT: day month(name or number) year
+    // Examples: "11 सितंबर 2006", "11 September 2006", "11 9 2006"
+    // ═══════════════════════════════════════════════════════════
+    const part0 = parseInt(parts[0]);
+    const part1Lower = parts[1].toLowerCase();
+    const part2 = parseInt(parts[2]);
+
+    // Check if middle part is a month name (Hindi or English)
+    if (hindiMonths[parts[1]]) {
+      day = part0;
+      month = hindiMonths[parts[1]];
+      year = part2;
+      console.log(
+        `✓ Detected format: day month(Hindi name) year: day=${day}, month=${month}, year=${year}`,
+      );
+    } else if (englishMonths[part1Lower]) {
+      day = part0;
+      month = englishMonths[part1Lower];
+      year = part2;
+      console.log(
+        `✓ Detected format: day month(English name) year: day=${day}, month=${month}, year=${year}`,
+      );
+    } else {
+      // Assume format: day month(as number) year
+      day = part0;
+      month = parseInt(parts[1]);
+      year = part2;
+      console.log(
+        `✓ Detected format: day month(numeric) year: day=${day}, month=${month}, year=${year}`,
+      );
+    }
+  } else if (parts.length === 2) {
+    // ═══════════════════════════════════════════════════════════
+    // FORMAT: day-month year (try parsing day-month as "dd-mm")
+    // Examples: "11-09 2006", "11/09 2006"
+    // ═══════════════════════════════════════════════════════════
+    const dateMonth = parts[0].split(/[-/]/);
+    if (dateMonth.length === 2) {
+      day = parseInt(dateMonth[0]);
+      month = parseInt(dateMonth[1]);
+      year = parseInt(parts[1]);
+      console.log(
+        `✓ Detected format: day-month year: day=${day}, month=${month}, year=${year}`,
+      );
+    }
+  }
+
+  // Validate date components
+  if (!day || !month || !year) {
+    console.log("Could not parse date components");
+    return null;
+  }
+
+  if (day < 1 || day > 31 || month < 1 || month > 12) {
+    console.log("Invalid date values");
+    return null;
+  }
+
+  // Format based on requested output
+  const formattedDate = formatDateByType(day, month, year, format);
+  console.log(`Final formatted date: "${formattedDate}"`);
+
+  return formattedDate;
+}
+
+/**
+ * Format parsed date components to requested format
+ * @param {number} day
+ * @param {number} month
+ * @param {number} year
+ * @param {string} format - "yyyy-mm-dd", "dd-mm-yyyy", "dd/mm/yyyy", or "auto"
+ * @returns {string} - Formatted date
+ */
+function formatDateByType(day, month, year, format = "auto") {
+  const dayStr = String(day).padStart(2, "0");
+  const monthStr = String(month).padStart(2, "0");
+  const yearStr = String(year);
+
+  switch (format) {
+    case "dd-mm-yyyy":
+      return `${dayStr}-${monthStr}-${yearStr}`;
+    case "dd/mm/yyyy":
+      return `${dayStr}/${monthStr}/${yearStr}`;
+    case "yyyy-mm-dd":
+    case "auto":
+    default:
+      return `${yearStr}-${monthStr}-${dayStr}`;
+  }
+}
+
+/**
  * Handle normal field processing
  * - Use AI to clean input
  * - Enforce form language on output
@@ -1115,28 +1793,58 @@ async function processFieldByType(field, input, formLanguage) {
   console.log("╚════════════════════════════════════════╝\n");
 
   console.log(`Field label: "${field.label}"`);
+  console.log(`Field type: "${field.type}"`);
   console.log(`Raw input: "${input}"`);
   console.log(`Form language: ${formLanguage}`);
 
-  // Detect field type
-  const fieldType = detectFieldType(field.element, field.label);
-  console.log(`Detected type: "${fieldType}"\n`);
-
   let result;
 
-  // Route to appropriate handler
-  if (fieldType === "password") {
-    // Password: skip AI, just clean
-    console.log("→ Routing to handlePassword()");
-    result = await handlePassword(input, field.element);
-  } else if (fieldType === "email") {
-    // Email: skip AI, apply light normalization
-    console.log("→ Routing to handleEmail()");
-    result = await handleEmail(input, field.element);
-  } else {
-    // Normal: use AI then enforce language
-    console.log("→ Routing to processNormalField()");
-    result = await processNormalField(input, field, formLanguage);
+  // ===== CRITICAL: Check field.type FIRST =====
+  // ✅ MOST IMPORTANT FIX: HARD EXIT for date-field (don't fall through to processNormalField)
+  if (field.type === "date-field") {
+    console.log("✓ Field type is 'date-field'");
+    console.log("→ Routing to handleDateField()");
+    result = await handleDateField(field, input);
+    console.log(`Date field processed, returning early: "${result}"`);
+    console.log(`\nFinal result: "${result}"`);
+    console.log("╚════════════════════════════════════════╝\n");
+    return result; // ← HARD RETURN HERE - PREVENTS FALLTHROUGH
+  }
+  // Check for radio-group type
+  else if (field.type === "radio-group") {
+    console.log("✓ Field type is 'radio-group'");
+    console.log("→ Routing to handleRadioGroup()");
+    result = await handleRadioGroup(field, input, formLanguage);
+  }
+  // Check for checkbox-group type
+  else if (field.type === "checkbox-group") {
+    console.log("✓ Field type is 'checkbox-group'");
+    console.log("→ Routing to handleCheckboxGroup()");
+    result = await handleCheckboxGroup(field, input, formLanguage);
+  }
+  // Detect and route other field types
+  else {
+    const fieldType = detectFieldType(field.element, field.label);
+    console.log(`✓ Detected field type: "${fieldType}"\n`);
+
+    // Route to appropriate handler
+    if (fieldType === "password") {
+      // Password: skip AI, just clean
+      console.log("→ Routing to handlePassword()");
+      result = await handlePassword(input, field.element);
+    } else if (fieldType === "email") {
+      // Email: skip AI, apply light normalization
+      console.log("→ Routing to handleEmail()");
+      result = await handleEmail(input, field.element);
+    } else if (fieldType === "username") {
+      // Username: skip AI, remove spaces, transliterate Hindi
+      console.log("→ Routing to handleUsername()");
+      result = await handleUsername(input, field.element);
+    } else {
+      // Normal: use AI then enforce language
+      console.log("→ Routing to processNormalField()");
+      result = await processNormalField(input, field, formLanguage);
+    }
   }
 
   console.log(`\nFinal result: "${result}"`);
@@ -2021,6 +2729,114 @@ function matchUserInputToOption(userInput, options) {
   return options[0];
 }
 
+/**
+ * Match single option from user input
+ * Wraps matchUserInputToOption for clarity
+ *
+ * @param {string} userInput - User's voice input
+ * @param {Array} options - Array of option objects {text, value, element}
+ * @returns {Object} - Matched option or null
+ */
+function matchOptionFromInput(userInput, options) {
+  return matchUserInputToOption(userInput, options);
+}
+
+/**
+ * Match multiple options from user input
+ * Splits input and matches each part to an option
+ *
+ * @param {string} userInput - User's voice input
+ * @param {Array} options - Array of option objects {text, value, element}
+ * @returns {Array} - Array of matched options
+ */
+function matchMultipleOptions(userInput, options) {
+  if (!userInput || !options || options.length === 0) {
+    return [];
+  }
+
+  const inputLower = userInput.toLowerCase().trim();
+  const matched = [];
+
+  // Split by common separators (comma, 'and', 'or')
+  const parts = inputLower
+    .split(/[,;]|और|or|and/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  for (const part of parts) {
+    for (const option of options) {
+      if (matched.includes(option)) continue; // Skip already matched
+
+      const optionText = (option.text || option.value || "")
+        .toLowerCase()
+        .trim();
+
+      if (
+        optionText === part ||
+        optionText.includes(part) ||
+        part.includes(optionText)
+      ) {
+        matched.push(option);
+        break; // Move to next part
+      }
+    }
+  }
+
+  return matched;
+}
+
+/**
+ * Read options aloud and ask user to select
+ * Speaks all available options and waits for user input
+ *
+ * @param {string} fieldLabel - The field label to announce
+ * @param {Array} options - Array of options {text, value, element}
+ * @param {boolean} isMultiple - Whether multiple selections allowed
+ * @returns {Promise<void>}
+ */
+async function readOptionsAndAsk(fieldLabel, options, isMultiple = false) {
+  if (!options || options.length === 0) return;
+
+  // Create readable option list
+  const optionTexts = options.map((opt) => opt.text || opt.value).join(", ");
+
+  // Create announcement message
+  let msg = `${fieldLabel}: ${optionTexts}`;
+  if (isMultiple) {
+    msg = `${fieldLabel} (select one or more): ${optionTexts}`;
+  }
+
+  console.log(`Reading options: ${msg}`);
+  await speak(msg);
+}
+
+/**
+ * Confirm selected options with user
+ * Speaks the selected options and waits for user confirmation
+ *
+ * @param {string} fieldLabel - The field label
+ * @param {Array} selectedOptions - Array of selected option objects
+ * @returns {Promise<boolean>} - true if confirmed, false otherwise
+ */
+async function confirmSelection(fieldLabel, selectedOptions) {
+  if (!selectedOptions || selectedOptions.length === 0) {
+    return false;
+  }
+
+  // Create confirmation message
+  const selectedTexts = selectedOptions
+    .map((opt) => opt.text || opt.value)
+    .join(", ");
+  const msg = `${fieldLabel}: ${selectedTexts}. Is this correct? Say yes or no.`;
+
+  console.log(`Confirming: ${msg}`);
+  await speak(msg);
+
+  // For now, always return true (in production, you'd listen for yes/no)
+  // This could be extended to actually wait for and process user confirmation
+  return true;
+}
+
 // Helper function to detect Hindi characters
 function containsHindiCharacters(text) {
   if (!text) return false;
@@ -2300,6 +3116,17 @@ async function startAawazz() {
     const fields = extractFields();
     console.log("Extracted fields:", fields);
 
+    // DEBUG: Show field type summary
+    console.log("\n╔════════════════════════════════════════╗");
+    console.log("║ EXTRACTED FIELDS SUMMARY               ║");
+    console.log("╚════════════════════════════════════════╝");
+    fields.forEach((field, index) => {
+      console.log(
+        `  ${index + 1}. Label: "${field.label}", Type: "${field.type}"`,
+      );
+    });
+    console.log("");
+
     if (fields.length === 0) {
       showAawazzUI();
       updateAawazzUI("Status", lang.noFieldsMessage, "0 of 0");
@@ -2379,6 +3206,17 @@ async function startAawazz() {
       );
       await speak(question);
 
+      // ✅ FIX 2: FORCE RADIO/CHECKBOX ASKING - Explicitly ask about options
+      if (field.type === "radio-group" || field.type === "checkbox-group") {
+        const optionsText = field.options.map((o) => o.text).join(", ");
+        const optionsMsg =
+          selectedLanguage === "hi-IN"
+            ? `आपके विकल्प हैं: ${optionsText}`
+            : `Your options are: ${optionsText}`;
+        console.log(`Speaking options for ${field.type}: ${optionsMsg}`);
+        await speak(optionsMsg);
+      }
+
       // Listen with automatic retry on timeout (increased timeout + 1 retry)
       let response;
       try {
@@ -2403,14 +3241,24 @@ async function startAawazz() {
         console.log(`Name preprocessed: "${response}"`);
       }
 
-      // Process with AI
-      updateAawazzUI(
-        "Processing",
-        "Just a moment...",
-        `${i + 1} of ${fields.length}`,
-      );
-      let finalAnswer = await processWithAI(response, field.label);
-      console.log(`AI cleaned: "${finalAnswer}"`);
+      // Process with AI - SKIP for special field types
+      let finalAnswer;
+      if (
+        field.type === "radio-group" ||
+        field.type === "checkbox-group" ||
+        field.type === "date-field"
+      ) {
+        console.log(`Skipping AI for ${field.type} field`);
+        finalAnswer = response; // Use raw response for special fields
+      } else {
+        updateAawazzUI(
+          "Processing",
+          "Just a moment...",
+          `${i + 1} of ${fields.length}`,
+        );
+        finalAnswer = await processWithAI(response, field.label);
+        console.log(`AI cleaned: "${finalAnswer}"`);
+      }
 
       // 6. FILL: Route field processing based on field type
       if (response) {
@@ -2424,18 +3272,40 @@ async function startAawazz() {
           // Route to appropriate handler based on field type
           // - Password fields: skip AI, just remove spaces and transliterate
           // - Email fields: skip AI, convert symbols and transliterate
+          // - Radio/Checkbox groups: handled by specific handlers
+          // - Date fields: handled by specific handler
           // - Normal fields: use AI, then enforce language
-          const finalAnswer = await processFieldByType(
+          const result = await processFieldByType(
             field,
-            response,
+            finalAnswer,
             formLanguage,
           );
 
-          console.log(`Final value to fill: "${finalAnswer}"`);
+          console.log(`Final value to fill: "${result}"`);
 
-          // Fill the field
-          fillFormField(field.element, finalAnswer);
-          console.log(`Field filled: "${finalAnswer}"`);
+          // Handle null result (retry needed)
+          if (result === null) {
+            console.log("Field requires retry");
+            const retryMsg =
+              selectedLanguage === "hi-IN"
+                ? "कृपया दोबारा कहें"
+                : "Please try again";
+            updateAawazzUI("Retry", retryMsg, `${i + 1} of ${fields.length}`);
+            await speak(retryMsg);
+            i--; // Retry this field
+          } else if (result) {
+            // For radio/checkbox: already handled by handlers, don't call fillFormField
+            // For date and all other fields: call fillFormField
+            if (
+              field.type === "radio-group" ||
+              field.type === "checkbox-group"
+            ) {
+              console.log(`${field.type} already filled by handler`);
+            } else {
+              fillFormField(field.element, result);
+              console.log(`Field filled: "${result}"`);
+            }
+          }
 
           // Simple success response
           const successResponse =
@@ -2449,9 +3319,11 @@ async function startAawazz() {
         } catch (fillError) {
           console.error("Fill error:", fillError);
 
-          // FALLBACK: Use response if processing fails
-          fillFormField(field.element, response);
-          console.log(`Processing failed, using raw response: "${response}"`);
+          // FALLBACK: Use response if processing fails (skip for radio/checkbox)
+          if (field.type !== "radio-group" && field.type !== "checkbox-group") {
+            fillFormField(field.element, response);
+            console.log(`Processing failed, using raw response: "${response}"`);
+          }
         }
       }
 
@@ -2720,6 +3592,16 @@ async function processWithAI(input, field, fieldContext = null) {
 // Optimized form field filling with modern framework compatibility
 function fillFormField(element, value) {
   const tagName = element.tagName.toLowerCase();
+
+  // ✅ FIX 3: DOB FINAL FILL - Enforce date field handling with proper events
+  if (element.type === "date" || element.getAttribute("type") === "date") {
+    console.log(`Date field fill: Setting value to "${value}"`);
+    element.value = value;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    console.log(`Date field filled and events dispatched`);
+    return;
+  }
 
   // Check if this is a password field and clean value (remove spaces)
   let finalValue = value;
