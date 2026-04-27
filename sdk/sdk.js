@@ -1517,6 +1517,11 @@
         // PROCESS FIELD BY TYPE
         async processFieldByType(field, input) {
             let finalAnswer = input;
+            
+            console.log(`\n=== PROCESSING FIELD ===`);
+            console.log(`Field: "${field.label}" (type: ${field.type})`);
+            console.log(`Input: "${input}"`);
+            console.log(`Contains Hindi: ${FormFiller.containsHindiCharacters(input)}`);
 
             // Check for structured fields that need rule-based processing (skip AI)
             if (FormFiller.isPasswordField(field.element)) {
@@ -1540,13 +1545,58 @@
                 // Email field: apply strict email normalization
                 finalAnswer = FormFiller.processEmailInput(input);
                 console.log(`Email field processed: "${input}" → "${finalAnswer}"`);
+            } else if (this.isNameField(field.label) || this.isPersonalInfoField(field.label)) {
+                // Name and personal info fields: preserve original language, just clean up
+                finalAnswer = input.trim();
+                console.log(`Name/personal field preserved: "${input}" → "${finalAnswer}"`);
             } else if (field.type !== "radio-group" && field.type !== "checkbox-group" && field.type !== "date-field") {
-                // Use AI for normal fields only
-                const fieldContext = field.type === "select" ? { type: "dropdown", options: field.options } : null;
-                finalAnswer = await AIProcessor.process(input, field.label, fieldContext);
+                // Check if input contains Hindi and field is not technical
+                if (FormFiller.containsHindiCharacters(input) && !this.isTechnicalField(field.label)) {
+                    // Preserve Hindi input for non-technical fields
+                    finalAnswer = input.trim();
+                    console.log(`Hindi preserved for non-technical field: "${input}" → "${finalAnswer}"`);
+                } else {
+                    // Use AI for technical fields or English input
+                    const fieldContext = field.type === "select" ? { type: "dropdown", options: field.options } : null;
+                    finalAnswer = await AIProcessor.process(input, field.label, fieldContext);
+                }
             }
 
+            console.log(`Final result: "${finalAnswer}"`);
+            console.log(`=== END PROCESSING ===\n`);
             return finalAnswer;
+        },
+
+        // Check if field is a name field
+        isNameField(fieldLabel) {
+            const nameIndicators = [
+                'name', 'naam', 'नाम', 'पूरा नाम', 'full name', 'first name', 'last name',
+                'पहला नाम', 'अंतिम नाम', 'उपनाम', 'nickname'
+            ];
+            const labelLower = fieldLabel.toLowerCase();
+            return nameIndicators.some(indicator => labelLower.includes(indicator));
+        },
+
+        // Check if field is personal info that should preserve language
+        isPersonalInfoField(fieldLabel) {
+            const personalInfoIndicators = [
+                'address', 'pata', 'पता', 'street', 'road', 'सड़क', 'village', 'गाँव',
+                'city', 'शहर', 'state', 'राज्य', 'country', 'देश', 'district', 'जिला',
+                'message', 'संदेश', 'comments', 'टिप्पणी', 'notes', 'टिप्पणियाँ'
+            ];
+            const labelLower = fieldLabel.toLowerCase();
+            return personalInfoIndicators.some(indicator => labelLower.includes(indicator));
+        },
+
+        // Check if field is technical and should use AI processing
+        isTechnicalField(fieldLabel) {
+            const technicalIndicators = [
+                'email', 'phone', 'mobile', 'ईमेल', 'फोन', 'मोबाइल', 'pincode', 'zipcode',
+                'age', 'उम्र', 'birthday', 'जन्मदिन', 'company', 'कंपनी', 'job', 'नौकरी',
+                'website', 'url', 'link', 'लिंक', 'id', 'number', 'संख्या', 'code', 'कोड'
+            ];
+            const labelLower = fieldLabel.toLowerCase();
+            return technicalIndicators.some(indicator => labelLower.includes(indicator));
         },
 
         // FILL FIELD BY TYPE

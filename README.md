@@ -150,12 +150,20 @@ window.Aawazz.FieldHighlighter; // Visual highlighting
 - ✅ English (en-IN)
 
 ### Smart Processing
-- ✅ Hindi to English transliteration
-- ✅ Email symbol conversion (@, .)
-- ✅ Username cleaning (spaces, lowercase)
-- ✅ Password normalization
-- ✅ Acceptance field detection
-- ✅ Natural question generation
+- ✅ **Language Preservation**: Hindi names/addresses stay Hindi
+- ✅ **Technical Fields**: Hindi → English conversion (email, username, password)
+- ✅ **Email symbol conversion** (@, .)
+- ✅ **Username cleaning** (spaces, lowercase)
+- ✅ **Password normalization**
+- ✅ **Acceptance field detection**
+- ✅ **Natural question generation**
+
+### Language Handling
+- **Name Fields**: "राम कुमार" → "राम कुमार" (preserved)
+- **Address Fields**: "मुंबई सेक्टर 5" → "मुंबई सेक्टर 5" (preserved)
+- **Email Fields**: "राज एट जीमेल डॉट कॉम" → "raj@gmail.com" (converted)
+- **Username Fields**: "उपयोगकर्ता नाम" → "username" (converted)
+- **Password Fields**: "मेरा पासवर्ड" → "merapassword" (converted)
 
 ## 🔧 Development
 
