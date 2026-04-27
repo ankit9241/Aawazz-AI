@@ -40,7 +40,22 @@ GEMINI_API_KEY=your_gemini_api_key
 PORT=3000
 ```
 
-**Endpoint:** `https://your-backend-url.com/process`
+**Endpoint:** `https://aawazz.onrender.com/process`
+
+### Development (Local Backend)
+
+For local development, you can temporarily update the API URL in `sdk.js`:
+
+```javascript
+// In sdk.js, line ~1255
+const response = await fetch("http://localhost:3000/process", {
+```
+
+Then start your local server:
+```bash
+cd server
+npm start
+```
 
 ### 2. SDK (For Production Websites)
 
