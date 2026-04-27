@@ -8,6 +8,119 @@
     'use strict';
 
     // ========================================
+    // GLOBAL STATE MANAGEMENT
+    // ========================================
+    
+    let AawazzState = {
+        fields: [],
+        currentIndex: 0,
+        isRunning: false,
+        completed: {},
+        totalFields: 0
+    };
+
+    // ========================================
+    // FIELD HIGHLIGHTING MODULE
+    // ========================================
+    
+    const FieldHighlighter = {
+        addAawazzStyles() {
+            if (document.getElementById("aawazz-styles")) return;
+
+            const style = document.createElement("style");
+            style.id = "aawazz-styles";
+            style.textContent = `
+                @keyframes pulse {
+                    0% { opacity: 1; }
+                    50% { opacity: 0.6; }
+                    100% { opacity: 1; }
+                }
+                
+                @keyframes shake {
+                    0%, 100% { transform: translateX(0); }
+                    25% { transform: translateX(-5px); }
+                    75% { transform: translateX(5px); }
+                }
+                
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: scale(0.9); }
+                    to: opacity: 1; transform: scale(1); }
+                }
+                
+                @keyframes fadeOut {
+                    from { opacity: 1; }
+                    to { opacity: 0; }
+                }
+                
+                .aawazz-field-highlight {
+                    transition: all 0.3s ease !important;
+                    position: relative !important;
+                }
+                
+                .aawazz-field-highlight::after {
+                    content: '';
+                    position: absolute;
+                    top: -8px;
+                    right: -8px;
+                    width: 12px;
+                    height: 12px;
+                    background: #2196F3;
+                    border-radius: 50%;
+                    animation: pulse 1.5s infinite;
+                }
+            `;
+
+            document.head.appendChild(style);
+        },
+
+        highlightActiveField(field) {
+            // Remove previous highlights
+            document.querySelectorAll(".aawazz-field-highlight").forEach((el) => {
+                el.classList.remove("aawazz-field-highlight");
+                el.style.outline = "";
+                el.style.boxShadow = "";
+            });
+
+            if (field && field.element) {
+                let elementsToHighlight = [];
+                
+                if (field.type === "radio-group" || field.type === "checkbox-group") {
+                    // For radio and checkbox groups, highlight all elements in the group
+                    elementsToHighlight = field.allElements || [field.element];
+                } else {
+                    // For single elements, just highlight the main element
+                    elementsToHighlight = [field.element];
+                }
+
+                // Add highlight to all relevant elements
+                elementsToHighlight.forEach(element => {
+                    element.classList.add("aawazz-field-highlight");
+                    element.style.outline = "2px solid #2196F3";
+                    element.style.outlineOffset = "-2px";
+                    element.style.boxShadow = "0 0 15px rgba(33, 150, 243, 0.3)";
+                });
+
+                // Scroll first element into view
+                if (elementsToHighlight.length > 0) {
+                    elementsToHighlight[0].scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                        inline: "nearest",
+                    });
+                }
+            }
+        },
+
+        removeFieldHighlights() {
+            document.querySelectorAll(".aawazz-field-highlight").forEach((el) => {
+                el.classList.remove("aawazz-field-highlight");
+                el.style.outline = "";
+                el.style.boxShadow = "";
+            });
+        }
+    };
+
+    // ========================================
     // FIELD DETECTION MODULE
     // ========================================
     
@@ -76,6 +189,92 @@
             return "Field " + (index + 1);
         },
 
+        extractRadioGroupLabel(radioElements, groupName) {
+            // Try to find a proper label for the radio group
+            const firstRadio = radioElements[0];
+            
+            // 1. Check for legend element (for fieldsets)
+            const fieldset = firstRadio.closest("fieldset");
+            if (fieldset) {
+                const legend = fieldset.querySelector("legend");
+                if (legend) {
+                    const legendText = this.safeGetTextContent(legend);
+                    if (legendText && !this.isOptionText(legendText)) {
+                        return legendText;
+                    }
+                }
+            }
+
+            // 2. Check for label elements that don't point to specific radios
+            const allLabels = document.querySelectorAll("label");
+            for (const label of allLabels) {
+                const labelFor = this.safeGetAttribute(label, "for");
+                const labelText = this.safeGetTextContent(label);
+                
+                // Skip if this label points to one of the radio buttons
+                if (labelFor && radioElements.some(radio => radio.id === labelFor)) {
+                    continue;
+                }
+                
+                // Check if this label contains any of the radio buttons
+                if (labelText && radioElements.some(radio => label.contains(radio))) {
+                    // Extract text before the first radio button
+                    const radioIndex = Array.from(label.children).indexOf(
+                        label.querySelector("input[type=\"radio\"]")
+                    );
+                    if (radioIndex > 0) {
+                        return labelText.split(/\s+/).slice(0, radioIndex).join(" ");
+                    }
+                }
+            }
+
+            // 3. Check parent container for non-option text
+            const parent = firstRadio.parentElement;
+            if (parent) {
+                const parentText = this.safeGetTextContent(parent);
+                const cleanText = this.removeOptionText(parentText, radioElements);
+                if (cleanText && cleanText.trim() !== "") {
+                    return cleanText.trim();
+                }
+            }
+
+            // 4. Check common Hindi field names by group name
+            const hindiFieldNames = {
+                'gender': 'लिंग',
+                'ling': 'लिंग',
+                'sex': 'लिंग',
+                'education': 'शिक्षा स्तर',
+                'category': 'श्रेणी'
+            };
+
+            const groupNameLower = (groupName || "").toLowerCase();
+            if (hindiFieldNames[groupNameLower]) {
+                return hindiFieldNames[groupNameLower];
+            }
+
+            return null;
+        },
+
+        isOptionText(text) {
+            // Check if text looks like an option (short, single words)
+            const words = text.trim().split(/\s+/);
+            return words.length <= 2 && words.length > 0;
+        },
+
+        removeOptionText(containerText, radioElements) {
+            // Remove option text from container text
+            let cleanText = containerText;
+            
+            radioElements.forEach(radio => {
+                const optionText = this.extractOptionLabel(radio);
+                if (optionText) {
+                    cleanText = cleanText.replace(optionText, "");
+                }
+            });
+            
+            return cleanText.replace(/\s+/g, " ").trim();
+        },
+
         extractOptionLabel(element) {
             // 1. Check for associated label[for=id]
             if (element.id) {
@@ -88,28 +287,22 @@
                 }
             }
 
-            // 2. Check data-label attribute
-            const dataLabel = this.safeGetAttribute(element, "data-label");
-            if (dataLabel) {
-                return dataLabel;
+            // 2. Check parent label
+            const parentLabel = element.closest("label");
+            if (parentLabel) {
+                const labelText = this.safeGetTextContent(parentLabel);
+                if (labelText) {
+                    return labelText;
+                }
             }
 
-            // 3. Check for next sibling label element
-            let nextSibling = element.nextElementSibling;
-            while (nextSibling) {
-                if (nextSibling.tagName.toLowerCase() === "label") {
-                    const labelText = this.safeGetTextContent(nextSibling);
-                    if (labelText) {
-                        return labelText;
-                    }
+            // 3. Check next sibling text
+            const nextSibling = element ? element.nextElementSibling : null;
+            if (nextSibling) {
+                const labelText = this.safeGetTextContent(nextSibling);
+                if (labelText) {
+                    return labelText;
                 }
-                if (nextSibling.tagName.toLowerCase() === "div" &&
-                    nextSibling.classList &&
-                    nextSibling.classList.contains("checkbox-option")) {
-                    nextSibling = nextSibling.nextElementSibling;
-                    continue;
-                }
-                break;
             }
 
             // 4. Check element value
@@ -333,7 +526,7 @@
             // Process radio groups
             radioGroups.forEach((radioElements, groupName) => {
                 const firstRadio = radioElements[0];
-                const fieldLabel = this.extractFieldLabel(firstRadio, fields.length) || groupName;
+                let fieldLabel = this.extractRadioGroupLabel(radioElements, groupName) || groupName;
 
                 const options = radioElements.map((radio) => ({
                     text: this.extractOptionLabel(radio),
@@ -341,14 +534,16 @@
                     element: radio,
                 }));
 
-                fields.push({
+                const radioField = {
                     id: groupName,
                     type: "radio-group",
                     label: fieldLabel,
                     element: firstRadio,
                     options: options,
                     allElements: radioElements,
-                });
+                };
+                console.log("DEBUG: Radio field extracted:", JSON.stringify(radioField));
+                fields.push(radioField);
             });
 
             // Process checkbox groups
@@ -408,7 +603,7 @@
                 code: "hi-IN",
                 speechCode: "hi-IN",
                 recognitionCode: "hi-IN",
-                greeting: "Hello, main Aawazz hoon. Main aapki awaaz se forms fill karne mein madad karunga.",
+                greeting: "Hello, Main aapki awaaz se forms fill karne mein madad karungi.",
                 questionPrefix: "Aapka",
                 confirmPrompt: "Agar yeh sahi hai toh yes boliye, warna no clearly boliye.",
                 retryMessage: "Phir se koshish karte hain.",
@@ -563,38 +758,149 @@
     // ========================================
     
     const FormFiller = {
+        // Helper function to check if a field is a password field (from content.js)
+        isPasswordField(element) {
+            if (!element) return false;
+
+            const tagName = (element.tagName || "").toLowerCase();
+            const inputType = (element.type || "").toLowerCase();
+
+            // Direct type check
+            if (inputType === "password") {
+                return true;
+            }
+
+            // Check field label/name for password indicators
+            const label = (element.name || element.id || "").toLowerCase();
+            const passwordIndicators = [
+                "password",
+                "pass",
+                "pwd",
+                "passwd",
+                "secret",
+                "pin",
+            ];
+
+            return (
+                tagName === "input" &&
+                passwordIndicators.some((indicator) => label.includes(indicator))
+            );
+        },
+
+        // Helper function to check if a field is a username field (from content.js)
+        isUsernameField(element) {
+            if (!element) return false;
+
+            const label = (element.name || element.id || "").toLowerCase();
+            const usernameIndicators = [
+                "username",
+                "user name",
+                "user_name",
+                "userid",
+                "user_id",
+                "login",
+                "account",
+                "handle",
+                "@",
+            ];
+
+            return usernameIndicators.some((indicator) => label.includes(indicator));
+        },
+
+        // Helper function to clean password input - removes all spaces (from content.js)
         cleanPasswordInput(value) {
             if (!value) return "";
+
+            // Remove ALL spaces from password (passwords don't have spaces)
             return value.replace(/\s+/g, "");
         },
 
+        // Helper function to clean username input - removes all spaces (from content.js)
         cleanUsernameInput(value) {
             if (!value) return "";
+
+            // Remove ALL spaces from username (usernames don't have spaces)
             return value.replace(/\s+/g, "");
         },
 
+        // Basic Hindi to English transliteration map (from content.js)
         basicHindiToEnglish(text) {
             if (!text) return text;
+
             const transliterationMap = {
-                'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo',
-                'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'क': 'k', 'ख': 'kh',
-                'ग': 'g', 'घ': 'gh', 'ङ': 'ng', 'च': 'ch', 'छ': 'chh', 'ज': 'j',
-                'झ': 'jh', 'ञ': 'ny', 'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh',
-                'ण': 'n', 'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
-                'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm', 'य': 'y',
-                'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's',
-                'ह': 'h', 'ं': 'n', 'ः': 'h', 'ँ': 'an', 'ा': 'a', 'ि': 'i',
-                'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'े': 'e', 'ै': 'ai', 'ो': 'o',
-                'ौ': 'au', 'ॉ': 'o', 'ृ': 'ri', 'ॄ': 'ree', 'ॢ': 'li', 'ॣ': 'lii'
+                अ: "a",
+                आ: "aa",
+                इ: "i",
+                ई: "ee",
+                उ: "u",
+                ऊ: "oo",
+                ए: "e",
+                ऐ: "ai",
+                ओ: "o",
+                "": "au",
+                क: "k",
+                ख: "kh",
+                ग: "g",
+                घ: "gh",
+                ङ: "ng",
+                च: "ch",
+                छ: "chh",
+                ज: "j",
+                झ: "jh",
+                ञ: "ny",
+                ट: "t",
+                ठ: "th",
+                ड: "d",
+                ढ: "dh",
+                ण: "n",
+                त: "t",
+                थ: "th",
+                द: "d",
+                ध: "dh",
+                न: "n",
+                प: "p",
+                फ: "ph",
+                ब: "b",
+                भ: "bh",
+                म: "m",
+                य: "y",
+                र: "r",
+                ल: "l",
+                व: "v",
+                श: "sh",
+                ष: "sh",
+                स: "s",
+                ह: "h",
+                "ं": "n",
+                "ः": "h",
+                "ँ": "an",
+                "ा": "a",
+                "ि": "i",
+                "ी": "ee",
+                "ु": "u",
+                "ू": "oo",
+                "े": "e",
+                "ै": "ai",
+                "ो": "o",
+                "ौ": "au",
+                "ॉ": "o",
+                "ा": "a",
+                "ृ": "ri",
+                "ॄ": "ree",
+                "ॢ": "li",
+                "ॣ": "lii",
             };
 
+            // Simple character-by-character transliteration
             let result = "";
             for (let char of text) {
                 result += transliterationMap[char] || char;
             }
 
-            result = result.replace(/a+/g, 'a').replace(/i+/g, 'i').replace(/u+/g, 'u');
-            result = result.replace(/\s+/g, ' ').trim();
+            // Clean up common patterns
+            result = result.replace(/a+/g, "a").replace(/i+/g, "i").replace(/u+/g, "u");
+            result = result.replace(/\s+/g, " ").trim();
+
             return result;
         },
 
@@ -603,32 +909,55 @@
             return /[\u0900-\u097F]/.test(text);
         },
 
+        // Email processing function from content.js
         processEmailInput(rawInput) {
             if (!rawInput) return "";
 
+            console.log(`Email input processing: "${rawInput}"`);
+
             let processed = rawInput;
 
-            // Replace multi-word Hindi phrases
+            // Step 1: Replace MULTI-WORD Hindi phrases FIRST
             const hindiMultiWordPhrases = [
-                { phrase: "एट द रेट", replacement: "@" },
-                { phrase: "at the rate", replacement: "@" },
+                { phrase: "एट द रेट", replacement: "@", desc: "at the rate" },
+                { phrase: "एट्  द रेट", replacement: "@", desc: "at the rate (variant)" },
+                {
+                    phrase: "एट  द रेट",
+                    replacement: "@",
+                    desc: "at the rate (extra space)",
+                },
+                { phrase: "at the rate", replacement: "@", desc: "English at the rate" },
             ];
 
-            for (const { phrase, replacement } of hindiMultiWordPhrases) {
+            for (const { phrase, replacement, desc } of hindiMultiWordPhrases) {
                 const regex = new RegExp(phrase.replace(/\s+/g, "\\s+"), "gi");
                 if (regex.test(processed)) {
                     processed = processed.replace(regex, replacement);
+                    console.log(`  Multi-word replacement: "${desc}" → "${replacement}"`);
                 }
             }
 
-            // Replace single-word symbols
+            // Step 2: Replace SINGLE-WORD Hindi symbols
             const hindiSingleWordSymbols = [
-                { word: "एट्", symbol: "@" }, { word: "एट", symbol: "@" }, { word: "at", symbol: "@" },
-                { word: "डॉट", symbol: "." }, { word: "dot", symbol: "." },
+                // @ symbol variants
+                { word: "एट्", symbol: "@", desc: "at with nukta" },
+                { word: "एट", symbol: "@", desc: "at" },
+                { word: "at", symbol: "@", desc: "English at" },
+
+                // . symbol variants
+                { word: "ड़ॉट", symbol: ".", desc: "dot with heavy nukta" },
+                { word: "डॉट्", symbol: ".", desc: "dot with nukta" },
+                { word: "डॉट", symbol: ".", desc: "dot in Hindi" },
+                { word: "डट", symbol: ".", desc: "alternative dot" },
+                { word: "dot", symbol: ".", desc: "English dot" },
+
+                // Space (user might say "space" instead of symbol)
+                { word: "स्पेस", symbol: " ", desc: "space" },
             ];
 
-            for (const { word, symbol } of hindiSingleWordSymbols) {
+            for (const { word, symbol, desc } of hindiSingleWordSymbols) {
                 const isASCII = /^[a-z]+$/i.test(word);
+
                 let regex;
                 if (isASCII) {
                     regex = new RegExp(`\\b${word}\\b`, "gi");
@@ -639,16 +968,25 @@
                 }
             }
 
-            // Transliterate remaining Hindi
+            // Step 3: NOW transliterate any remaining Hindi letters to English
             if (this.containsHindiCharacters(processed)) {
-                processed = this.basicHindiToEnglish(processed);
+                const transliterated = this.basicHindiToEnglish(processed);
+                console.log(`Step 3 - Hindi letters transliterated: "${processed}" → "${transliterated}"`);
+                processed = transliterated;
             }
 
-            // Remove spaces and normalize
+            // Step 4: Remove all spaces
             processed = processed.replace(/\s+/g, "");
-            processed = processed.replace(/@+/g, "@");
-            processed = processed.replace(/\.+/g, ".");
-            return processed.toLowerCase().trim();
+
+            // Step 5: Normalize email format
+            processed = processed.replace(/@+/g, "@"); // Only one @
+            processed = processed.replace(/\.+/g, "."); // Only one dot per location
+
+            // Step 6: Lowercase (email standard)
+            const final = processed.toLowerCase().trim();
+            console.log(`Email final: "${final}"`);
+
+            return final;
         },
 
         processPasswordInput(rawInput) {
@@ -788,13 +1126,30 @@
                 return;
             }
 
-            // Clean password/username fields
+            // Apply field-specific normalization BEFORE filling
             let finalValue = value;
-            if (FieldDetector.isPasswordField(element)) {
+            
+            if (this.isPasswordField(element)) {
+                // Password: remove all spaces, convert Hindi to English
                 finalValue = this.cleanPasswordInput(value);
-            }
-            if (FieldDetector.isUsernameField && FieldDetector.isUsernameField(element)) {
+                if (this.containsHindiCharacters(value)) {
+                    finalValue = this.basicHindiToEnglish(value);
+                    finalValue = finalValue.replace(/\s+/g, "");
+                }
+                console.log(`Password field filling: "${value}" → "${finalValue}"`);
+            } else if (this.isUsernameField(element)) {
+                // Username: remove spaces, convert to lowercase, convert Hindi to English
                 finalValue = this.cleanUsernameInput(value);
+                if (this.containsHindiCharacters(value)) {
+                    finalValue = this.basicHindiToEnglish(value);
+                    finalValue = finalValue.replace(/\s+/g, "");
+                }
+                finalValue = finalValue.toLowerCase();
+                console.log(`Username field filling: "${value}" → "${finalValue}"`);
+            } else if (FieldDetector.isEmailField(element)) {
+                // Email: apply strict email normalization
+                finalValue = this.processEmailInput(value);
+                console.log(`Email field filling: "${value}" → "${finalValue}"`);
             }
 
             // Focus element
@@ -968,27 +1323,40 @@
         shouldStop: false,
 
         async start() {
-            if (this.isRunning) {
+            // PREVENT DUPLICATE EXECUTION
+            if (AawazzState.isRunning) {
                 console.log("Aawazz is already running");
                 return;
             }
 
+            // INITIALIZE STATE
+            AawazzState.isRunning = true;
+            AawazzState.currentIndex = 0;
+            AawazzState.completed = {};
+            
             this.isRunning = true;
             this.shouldStop = false;
 
-            console.log("Starting Aawazz SDK...");
+            console.log("Starting Aawazz SDK with controlled flow...");
 
             try {
+                // Add highlighting styles
+                FieldHighlighter.addAawazzStyles();
+                
                 // Load language preference
                 VoiceSystem.loadLanguagePreference();
 
                 // Extract form fields
                 const fields = FieldDetector.extractFields();
+                AawazzState.fields = fields;
+                AawazzState.totalFields = fields.length;
+                
                 console.log("Extracted fields:", fields);
 
                 if (fields.length === 0) {
                     const lang = VoiceSystem.getCurrentLanguage();
                     await VoiceSystem.speak(lang.noFieldsMessage);
+                    AawazzState.isRunning = false;
                     this.isRunning = false;
                     return;
                 }
@@ -1005,77 +1373,214 @@
                 const formLanguage = LanguageDetector.detectFormLanguage();
                 console.log(`Form language: ${formLanguage}, User language: ${VoiceSystem.selectedLanguage}`);
 
-                // Process each field
-                for (let i = 0; i < fields.length; i++) {
-                    if (this.shouldStop) {
-                        await VoiceSystem.speak(lang.stopMessage);
-                        this.isRunning = false;
-                        return;
-                    }
-
-                    const field = fields[i];
-                    console.log(`Processing field ${i + 1}: ${field.label}`);
-
-                    // Generate question
-                    let question;
-                    if (VoiceSystem.selectedLanguage === "hi-IN") {
-                        question = this.generateHindiQuestion(field.label, field.options);
-                    } else {
-                        question = this.generateEnglishQuestion(field.label, field.options);
-                    }
-
-                    // Ask question
-                    await VoiceSystem.speak(question);
-
-                    // Listen for response
-                    let response;
-                    try {
-                        response = await VoiceSystem.listenWithRetry();
-                        console.log(`Response: "${response}"`);
-                    } catch (error) {
-                        console.log("Listen failed:", error);
-                        continue; // Skip to next field
-                    }
-
-                    // Process response
-                    let finalAnswer = response;
-                    if (field.type !== "radio-group" && field.type !== "checkbox-group" && field.type !== "date-field") {
-                        // Use AI for normal fields
-                        const fieldContext = field.type === "select" ? { type: "dropdown", options: field.options } : null;
-                        finalAnswer = await AIProcessor.process(response, field.label, fieldContext);
-                    }
-
-                    // Fill field
-                    try {
-                        if (field.type === "radio-group") {
-                            await this.handleRadioGroup(field, finalAnswer);
-                        } else if (field.type === "checkbox-group") {
-                            await this.handleCheckboxGroup(field, finalAnswer);
-                        } else if (field.type === "date-field") {
-                            await this.handleDateField(field, finalAnswer);
-                        } else {
-                            FormFiller.fillFormField(field.element, finalAnswer);
-                        }
-
-                        await VoiceSystem.speak(lang.successMessage);
-                    } catch (error) {
-                        console.error("Field filling error:", error);
-                    }
-
-                    // Small delay between fields
-                    await new Promise((resolve) => setTimeout(resolve, 500));
-                }
-
-                // Completion message
-                await VoiceSystem.speak(lang.completeMessage);
-                console.log("Aawazz completed successfully");
+                // START CONTROLLED FLOW
+                await this.processNextField();
 
             } catch (error) {
                 console.error("Aawazz error:", error);
                 await VoiceSystem.speak("An error occurred while filling the form.");
-            } finally {
+                AawazzState.isRunning = false;
                 this.isRunning = false;
             }
+        },
+
+        // MAIN LOOP (CONTROLLED FLOW)
+        async processNextField() {
+            // CHECK COMPLETION
+            if (AawazzState.currentIndex >= AawazzState.fields.length) {
+                // Remove field highlights
+                FieldHighlighter.removeFieldHighlights();
+                
+                const lang = VoiceSystem.getCurrentLanguage();
+                await VoiceSystem.speak(lang.completeMessage);
+                console.log("Aawazz completed successfully");
+                AawazzState.isRunning = false;
+                this.isRunning = false;
+                return;
+            }
+
+            // CHECK FOR STOP REQUEST
+            if (this.shouldStop) {
+                // Remove field highlights
+                FieldHighlighter.removeFieldHighlights();
+                
+                const lang = VoiceSystem.getCurrentLanguage();
+                await VoiceSystem.speak(lang.stopMessage);
+                AawazzState.isRunning = false;
+                this.isRunning = false;
+                return;
+            }
+
+            const field = AawazzState.fields[AawazzState.currentIndex];
+
+            // AUTO-SKIP FILLED FIELDS
+            let isFieldFilled = false;
+            
+            if (field.type === "radio-group" || field.type === "checkbox-group") {
+                // For radio and checkbox groups, check if any option is selected
+                isFieldFilled = field.allElements && field.allElements.some(el => el.checked);
+            } else {
+                // For other fields, check the value
+                isFieldFilled = field.element.value && field.element.value.trim() !== "";
+            }
+            
+            if (isFieldFilled) {
+                console.log(`Skipping already filled field: ${field.label}`);
+                AawazzState.completed[field.id] = true;
+                AawazzState.currentIndex++;
+                return this.processNextField();
+            }
+
+            // SKIP IF ALREADY COMPLETED
+            if (AawazzState.completed[field.id]) {
+                AawazzState.currentIndex++;
+                return this.processNextField();
+            }
+
+            // PROCESS CURRENT FIELD
+            await this.processField(field);
+        },
+
+        // PROCESS FIELD
+        async processField(field) {
+            console.log(`Processing field ${AawazzState.currentIndex + 1}/${AawazzState.totalFields}: ${field.label}`);
+
+            try {
+                // HIGHLIGHT CURRENT FIELD
+                FieldHighlighter.highlightActiveField(field);
+                
+                // UPDATE REAL-TIME TRACKING
+                this.updateProgress({
+                    current: AawazzState.currentIndex + 1,
+                    total: AawazzState.totalFields,
+                    label: field.label,
+                    question: this.generateQuestion(field),
+                    field: field
+                });
+
+                // ASK
+                const question = this.generateQuestion(field);
+                await VoiceSystem.speak(question);
+
+                // LISTEN
+                const input = await VoiceSystem.listenWithRetry();
+
+                if (!input || input.trim() === "") {
+                    await VoiceSystem.speak("मुझे समझ नहीं आया, कृपया दोहराएं");
+                    return this.processField(field); // RETRY SAME FIELD
+                }
+
+                // PROCESS
+                const value = await this.processFieldByType(field, input);
+
+                // VALIDATION
+                if (!value || (typeof value === 'string' && value.trim() === "")) {
+                    await VoiceSystem.speak("यह सही नहीं है, कृपया दोबारा बताएं");
+                    return this.processField(field); // RETRY SAME FIELD
+                }
+
+                // FILL
+                await this.fillFieldByType(field, value);
+
+                // MARK COMPLETE
+                AawazzState.completed[field.id] = true;
+
+                // SUCCESS FEEDBACK
+                const lang = VoiceSystem.getCurrentLanguage();
+                await VoiceSystem.speak(lang.successMessage);
+
+                // MOVE NEXT
+                AawazzState.currentIndex++;
+
+                // CONTINUE
+                return this.processNextField();
+
+            } catch (error) {
+                console.error("Field processing error:", error);
+                await VoiceSystem.speak("इस फील्ड में समस्या हो रही है, अगला फील्ड आजमाते हैं");
+                
+                // MOVE TO NEXT FIELD ON ERROR
+                AawazzState.currentIndex++;
+                return this.processNextField();
+            }
+        },
+
+        // GENERATE QUESTION
+        generateQuestion(field) {
+            if (VoiceSystem.selectedLanguage === "hi-IN") {
+                return this.generateHindiQuestion(field.label, field.options);
+            } else {
+                return this.generateEnglishQuestion(field.label, field.options);
+            }
+        },
+
+        // PROCESS FIELD BY TYPE
+        async processFieldByType(field, input) {
+            let finalAnswer = input;
+
+            // Check for structured fields that need rule-based processing (skip AI)
+            if (FormFiller.isPasswordField(field.element)) {
+                // Password field: remove spaces, convert Hindi to English
+                finalAnswer = FormFiller.cleanPasswordInput(input);
+                if (FormFiller.containsHindiCharacters(input)) {
+                    finalAnswer = FormFiller.basicHindiToEnglish(input);
+                    finalAnswer = finalAnswer.replace(/\s+/g, "");
+                }
+                console.log(`Password field processed: "${input}" → "${finalAnswer}"`);
+            } else if (FormFiller.isUsernameField(field.element)) {
+                // Username field: remove spaces, convert to lowercase, convert Hindi to English
+                finalAnswer = FormFiller.cleanUsernameInput(input);
+                if (FormFiller.containsHindiCharacters(input)) {
+                    finalAnswer = FormFiller.basicHindiToEnglish(input);
+                    finalAnswer = finalAnswer.replace(/\s+/g, "");
+                }
+                finalAnswer = finalAnswer.toLowerCase();
+                console.log(`Username field processed: "${input}" → "${finalAnswer}"`);
+            } else if (FieldDetector.isEmailField(field.element, field.label)) {
+                // Email field: apply strict email normalization
+                finalAnswer = FormFiller.processEmailInput(input);
+                console.log(`Email field processed: "${input}" → "${finalAnswer}"`);
+            } else if (field.type !== "radio-group" && field.type !== "checkbox-group" && field.type !== "date-field") {
+                // Use AI for normal fields only
+                const fieldContext = field.type === "select" ? { type: "dropdown", options: field.options } : null;
+                finalAnswer = await AIProcessor.process(input, field.label, fieldContext);
+            }
+
+            return finalAnswer;
+        },
+
+        // FILL FIELD BY TYPE
+        async fillFieldByType(field, value) {
+            try {
+                if (field.type === "radio-group") {
+                    await this.handleRadioGroup(field, value);
+                } else if (field.type === "checkbox-group") {
+                    await this.handleCheckboxGroup(field, value);
+                } else if (field.type === "date-field") {
+                    await this.handleDateField(field, value);
+                } else {
+                    FormFiller.fillFormField(field.element, value);
+                }
+            } catch (error) {
+                console.error("Field filling error:", error);
+                throw error;
+            }
+        },
+
+        // REAL-TIME TRACKING UI
+        updateProgress(progressInfo) {
+            // Emit custom event for UI updates
+            const event = new CustomEvent('aawazzProgress', {
+                detail: {
+                    current: progressInfo.current,
+                    total: progressInfo.total,
+                    label: progressInfo.label,
+                    percentage: Math.round((progressInfo.current / progressInfo.total) * 100)
+                }
+            });
+            document.dispatchEvent(event);
+
+            console.log(`Progress: ${progressInfo.current}/${progressInfo.total} - ${progressInfo.label}`);
         },
 
         stop() {
@@ -1084,6 +1589,11 @@
             }
 
             this.shouldStop = true;
+            AawazzState.isRunning = false;
+            
+            // Remove field highlights
+            FieldHighlighter.removeFieldHighlights();
+            
             VoiceSystem.stop();
             console.log("Aawazz stop requested");
         },
@@ -1117,12 +1627,24 @@
         },
 
         generateHindiQuestion(fieldLabel, options = null) {
+            // Debug: Log the actual field label
+            console.log("DEBUG: Field label:", JSON.stringify(fieldLabel));
+            console.log("DEBUG: Options:", options);
+            
+            // Check for checkbox/acceptance fields first
+            if (this.isAcceptanceField(fieldLabel)) {
+                return "क्या आप नियम और शर्तों को स्वीकार करते हैं?";
+            }
+
             if (options && Array.isArray(options) && options.length > 0) {
                 const limitedOptions = options.slice(0, 5);
                 const optionsText = limitedOptions
                     .map((opt, index) => `${index + 1}. ${opt.text || opt.value || opt}`)
                     .join(", ");
-                return `aapki ${fieldLabel} kya hai? विकल्प हैं: ${optionsText}`;
+                
+                // Use proper Hindi grammar based on field label
+                let questionPrefix = this.getHindiQuestionPrefix(fieldLabel);
+                return `${questionPrefix} ${fieldLabel} kya hai? विकल्प हैं: ${optionsText}`;
             }
 
             const hindiQuestions = {
@@ -1138,10 +1660,52 @@
                 country: "aapka desh kya hai?",
                 age: "aapki umra kya hai?",
                 birthday: "aapki janmdin tithi kya hai?",
+                // Hindi field mappings
+                "लिंग": "aapka ling kya hai?", // Gender
+                "शिक्षा स्तर": "aapka shiksha star kya hai?", // Education level
+                "पासवर्ड": "aapka password kya hai?", // Password
+                "ईमेल": "aapka email kya hai?", // Email
+                "पूरा नाम": "aapka poora naam kya hai?", // Full name
+                "ईमेल पता": "aapka email pata kya hai?", // Email address
+                "मोबाइल": "aapka mobile number kya hai?", // Mobile
+                "जन्म तिथि": "aapki janmdin tithi kya hai?", // Birth date
+                "शहर": "aapka sheher kya hai?", // City
+                "राज्य": "aapka rajya kya hai?", // State
+                "देश": "aapka desh kya hai?", // Country
+                "पता": "aapka pata kya hai?", // Address
+                "उम्र": "aapki umra kya hai?", // Age
             };
 
             const fieldLower = fieldLabel.toLowerCase();
-            return hindiQuestions[fieldLower] || `aapka ${fieldLabel} kya hai?`;
+            return hindiQuestions[fieldLabel] || hindiQuestions[fieldLower] || `${this.getHindiQuestionPrefix(fieldLabel)} ${fieldLabel} kya hai?`;
+        },
+
+        isAcceptanceField(fieldLabel) {
+            // Check if this is a terms/conditions or acceptance field
+            const acceptanceKeywords = [
+                'स्वीकार', 'accept', 'agree', 'terms', 'conditions', 'नियम', 'शर्त',
+                'शर्तों', 'terms and conditions', 'agree to', 'consent'
+            ];
+            
+            const fieldLower = fieldLabel.toLowerCase();
+            return acceptanceKeywords.some(keyword => fieldLower.includes(keyword));
+        },
+
+        getHindiQuestionPrefix(fieldLabel) {
+            // Determine correct Hindi prefix based on field type
+            const masculineFields = ['naam', 'name', 'email', 'phone', 'mobile', 'address', 'password', 'ling', 'शिक्षा', 'शिक्षा स्तर'];
+            const feminineFields = ['umra', 'age', 'janmdin', 'birthday'];
+            
+            const fieldLower = fieldLabel.toLowerCase();
+            
+            if (masculineFields.some(mf => fieldLower.includes(mf))) {
+                return "aapka";
+            } else if (feminineFields.some(ff => fieldLower.includes(ff))) {
+                return "aapki";
+            } else {
+                // Default to masculine for unknown fields
+                return "aapka";
+            }
         },
 
         async handleRadioGroup(field, input) {
@@ -1203,7 +1767,8 @@
         VoiceSystem,
         FormFiller,
         AIProcessor,
-        LanguageDetector
+        LanguageDetector,
+        FieldHighlighter
     };
 
     // Auto-initialize
